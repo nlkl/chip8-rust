@@ -1,16 +1,20 @@
 extern crate minifb;
 
+mod cpu;
 mod display;
+mod register;
+mod system;
 
 use minifb::{Key, Window, WindowOptions};
+use display::*;
 
 const WINDOW_WIDTH: usize = 640;
 const WINDOW_HEIGHT: usize = 320;
 const BLACK: u32 = 0x000000;
-const WHITE: u32 = 0xffffff;
+const WHITE: u32 = 0xFFFFFF;
 
 fn main() {
-    let mut display = display::new_display();
+    let mut display = Display::new();
     display.set(1, 1, true);
     display.apply_sprite(10, 10, vec![0xFF, 0xE7, 0xE7, 0xFF]);
 

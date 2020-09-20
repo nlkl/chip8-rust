@@ -5,13 +5,13 @@ pub struct Display {
     grid: [[bool; HEIGHT]; WIDTH]
 }
 
-pub fn new_display() -> Display {
-    Display {
-        grid: [[false; HEIGHT]; WIDTH]
-    }
-}
-
 impl Display {
+    pub fn new() -> Display {
+        Display {
+            grid: [[false; HEIGHT]; WIDTH]
+        }
+    }
+
     pub fn apply_sprite(&mut self, x: usize, y: usize, sprite: Vec<u8>) {
         for (i, row) in sprite.iter().enumerate() {
             let y_row = y + i;
