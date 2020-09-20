@@ -1,44 +1,41 @@
-extern crate piston_window;
+extern crate minifb;
 
 mod display;
 
-use piston_window::*;
+use minifb::{Key, Window, WindowOptions};
+
+const WINDOW_WIDTH: usize = 640;
+const WINDOW_HEIGHT: usize = 320;
+const BLACK: u32 = 0x000000;
+const WHITE: u32 = 0xffffff;
 
 fn main() {
-    let black = [0.0, 0.0, 0.0, 0.0];
-    let white = [1.0, 1.0, 1.0, 1.0];
-
-    let mut window: PistonWindow = WindowSettings::new("Chip-8", [640, 320])
-        .exit_on_esc(true)
-        .build()
-        .unwrap();
-
     let mut display = display::new_display();
     display.set(1, 1, true);
     display.apply_sprite(10, 10, vec![0xFF, 0xE7, 0xE7, 0xFF]);
 
-    while let Some(event) = window.next() {
+    let mut buffer: Vec<u32> = vec![0; WINDOW_WIDTH * WINDOW_HEIGHT];
+    let mut window = Window::new("Chip-8", WINDOW_WIDTH, WINDOW_HEIGHT, WindowOptions::default())
+        .unwrap_or_else(|e| panic!("{}", e));
 
-        let window_size = window.size();
-        let window_width = window_size.width;
-        let window_height = window_size.height;
+    while window.is_open() && !window.is_key_down(Key::Escape) {
+        for x in 0..WINDOW_WIDTH {
+            for y in 0..WINDOW_HEIGHT {
+                let x_display = x * display::WIDTH / WINDOW_WIDTH;
+                let y_display = y * display::HEIGHT / WINDOW_HEIGHT;
 
-        if let Some(_) = event.render_args() {
-            window.draw_2d(&event, |context, graphics, _device| {
-                clear(black, graphics);
-
-                for x in 0..display::WIDTH {
-                    for y in 0..display::HEIGHT {
-                        if display.is_active(x, y) {
-                            let x_physical = (x as f64) * window_width / (display::WIDTH as f64);
-                            let y_physical = (y as f64) * window_height / (display::HEIGHT as f64);
-                            let width_physical = window_width / (display::WIDTH as f64);
-                            let height_physical =  window_height / (display::HEIGHT as f64);
-                            rectangle(white, [x_physical, y_physical, width_physical, height_physical], context.transform, graphics);
-                        }
+                let i = y * WINDOW_WIDTH + x;
+                buffer[i] =
+                    if display.is_active(x_display, y_display) {
+                        WHITE
+                    } else {
+                        BLACK
                     }
-                }
-            });
+            }
         }
+
+        window
+            .update_with_buffer(&buffer, WINDOW_WIDTH, WINDOW_HEIGHT)
+            .unwrap();
     }
 }
