@@ -1,18 +1,20 @@
-pub const HEIGHT: usize = 32;
-pub const WIDTH: usize = 64;
+pub const HEIGHT: u8 = 32;
+pub const WIDTH: u8 = 64;
 
 pub struct Display {
-    grid: [[bool; HEIGHT]; WIDTH]
+    grid: [[bool; HEIGHT as usize]; WIDTH as usize]
 }
 
 impl Display {
     pub fn new() -> Display {
         Display {
-            grid: [[false; HEIGHT]; WIDTH]
+            grid: [[false; HEIGHT as usize]; WIDTH as usize]
         }
     }
 
-    pub fn apply_sprite(&mut self, x: usize, y: usize, sprite: Vec<u8>) {
+    pub fn apply_sprite(&mut self, x: u8, y: u8, sprite: Vec<u8>) {
+        let x = usize::from(x);
+        let y = usize::from(y);
         for (i, row) in sprite.iter().enumerate() {
             let y_row = y + i;
             for n in 0..8 {
@@ -21,11 +23,15 @@ impl Display {
         }
     }
 
-    pub fn set(&mut self, x: usize, y: usize, active: bool) {
+    pub fn set(&mut self, x: u8, y: u8, active: bool) {
+        let x = usize::from(x);
+        let y = usize::from(y);
         self.grid[x][y] = active;
     }
 
-    pub fn is_active(&mut self, x: usize, y: usize) -> bool {
+    pub fn is_active(&mut self, x: u8, y: u8) -> bool {
+        let x = usize::from(x);
+        let y = usize::from(y);
         self.grid[x][y]
     }
 }
