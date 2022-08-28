@@ -29,9 +29,21 @@ impl Display {
         self.grid[x][y] = active;
     }
 
-    pub fn is_active(&mut self, x: u8, y: u8) -> bool {
+    pub fn is_active(&self, x: u8, y: u8) -> bool {
         let x = usize::from(x);
         let y = usize::from(y);
         self.grid[x][y]
+    }
+    
+    pub fn get_active(&self) -> Vec<(u8, u8)> {
+        let mut active_coords = vec![];
+        for x in 0..WIDTH {
+            for y in 0..HEIGHT {
+                if self.is_active(x, y) {
+                    active_coords.push((x, y));
+                }
+            }
+        }
+        active_coords
     }
 }
