@@ -12,38 +12,48 @@ impl Display {
         }
     }
 
-    pub fn apply_sprite(&mut self, x: u8, y: u8, sprite: Vec<u8>) {
-        let x = usize::from(x);
-        let y = usize::from(y);
-        for (i, row) in sprite.iter().enumerate() {
-            let y_row = y + i;
-            for n in 0..8 {
-                self.grid[x+n][y_row] = (row & (1 << n) > 0) ^ self.grid[x+n][y_row];
+    pub fn clear_screen(&mut self) {
+        for x in 0..WIDTH {
+            for y in 0..HEIGHT {
+                self.set(x, y, false);
             }
         }
     }
 
-    pub fn set(&mut self, x: u8, y: u8, active: bool) {
-        let x = usize::from(x);
-        let y = usize::from(y);
-        self.grid[x][y] = active;
-    }
-
-    pub fn is_active(&self, x: u8, y: u8) -> bool {
-        let x = usize::from(x);
-        let y = usize::from(y);
-        self.grid[x][y]
+    pub fn apply_sprite(&mut self, x: u8, y: u8, sprite: Vec<u8>) -> bool {
+        let mut has_unset = false;
+        for (i, row) in sprite.iter().enumerate() {
+            let y_row = y + (i as u8);
+            for n in 0..8 {
+                let was_set = self.get(x+n, y_row);
+                let is_set = (row & (0x80 >> n) > 0) ^ was_set;
+                self.set(x+n, y_row, is_set);
+                if !is_set && was_set {
+                    has_unset = true;
+                }
+            }
+        }
+        has_unset
     }
     
-    pub fn get_active(&self) -> Vec<(u8, u8)> {
+    pub fn displayed_pixels(&self) -> Vec<(u8, u8)> {
         let mut active_coords = vec![];
         for x in 0..WIDTH {
             for y in 0..HEIGHT {
-                if self.is_active(x, y) {
+                let is_active = self.get(x, y);
+                if is_active {
                     active_coords.push((x, y));
                 }
             }
         }
         active_coords
+    }
+
+    fn get(&self, x: u8, y: u8) -> bool {
+        self.grid[(x % WIDTH) as usize][(y % HEIGHT) as usize]
+    }
+
+    fn set(&mut self, x: u8, y: u8, active: bool) {
+        self.grid[(x % WIDTH) as usize][(y % HEIGHT) as usize] = active;
     }
 }
