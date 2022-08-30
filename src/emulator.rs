@@ -136,9 +136,10 @@ pub struct EmulatorInput {
 pub struct EmulatorOutput {
     pub display_width: u8,
     pub display_height: u8,
-    pub displayed_pixels: Vec<(u8, u8)>,
+    pub visible_pixels: Vec<(u8, u8)>,
 }
 
+#[derive(Clone, Copy)]
 pub struct EmulatorSettings {
     /// Clock speed in Hz.
     pub frame_rate: u16,
@@ -148,15 +149,21 @@ pub struct EmulatorSettings {
     pub program_start_address: u16,
     /// Shift right (8XY6) and left (8XYE) in-place on register VX rather than from VY.
     pub use_in_place_shift: bool,
+    /// The width of the virtual display in px.
+    pub display_width: u8,
+    /// The height of the virtual display in px.
+    pub display_height: u8,
 }
 
 impl Default for EmulatorSettings {
     fn default() -> EmulatorSettings { 
         EmulatorSettings {
             frame_rate: 60,
-            clock_speed: 500,
+            clock_speed: 600,
             program_start_address: 0x200,
             use_in_place_shift: false,
+            display_width: 64,
+            display_height: 32,
         }
     }
 }
@@ -176,7 +183,6 @@ pub struct Emulator {
 impl Emulator {
     pub fn new(settings: EmulatorSettings, program: Vec<u8>) -> Emulator {
         let program_counter = settings.program_start_address;
-
         let mut memory = [0; MEMORY_LENGTH];
         for i in 0..program.len() {
             memory[i + program_counter as usize] = program[i];
@@ -204,9 +210,13 @@ impl Emulator {
             memory[i] = sprites[i];
         }
 
+        let display_width = settings.display_width;
+        let display_height = settings.display_height;
+        let display = Display::new(display_width, display_height);
+
         Emulator {
             settings: settings,
-            display: Display::new(),
+            display: display,
             memory: memory,
             registers: [0; REGISTER_COUNT],
             program_counter: program_counter,
@@ -227,13 +237,15 @@ impl Emulator {
 
         println!("Cycles per frame: {}", cycles_per_frame);
 
-        'frame_loop: loop {
+        loop {
             let frame_clock = Instant::now();
 
+            self.decrement_timers();
+
             let output = EmulatorOutput {
-                display_width: display::WIDTH,
-                display_height: display::HEIGHT,
-                displayed_pixels: self.display.displayed_pixels()
+                display_width: self.display.width,
+                display_height: self.display.height,
+                visible_pixels: self.display.visible_pixels()
             };
 
             let input = render(output);
@@ -247,7 +259,7 @@ impl Emulator {
 
                 match cycle_result {
                     CycleResult::Wait => {
-                        break 'frame_loop;
+                        break;
                     },
                     CycleResult::Done => {
                         return;
@@ -261,8 +273,6 @@ impl Emulator {
                 std::thread::sleep(frame_duration - frame_elapsed_duration);
             }
 
-            self.decrement_timers();
-
             //println!("FPS: {}", 1.0 / frame_clock.elapsed().as_secs_f64());
         }
     }
@@ -275,11 +285,12 @@ impl Emulator {
 
         let instruction_bytes = (self.memory[self.program_counter as usize] as u16) << 8 | (self.memory[self.program_counter as usize + 1] as u16);
         let instruction = Instruction::from(instruction_bytes);
+        self.program_counter += 2;
         //dbg!(instruction);
 
         match instruction {
             Instruction::ClearScreen => {
-                self.display.clear_screen();
+                self.display.clear();
             },
             Instruction::Return => {
                 let return_address = self.stack.pop().expect("Tried to return, but stack was empty.");
@@ -293,8 +304,7 @@ impl Emulator {
                 self.program_counter = address + offset as u16;
             },
             Instruction::Call { address } => {
-                let return_address = self.program_counter + 2;
-                self.stack.push(return_address);
+                self.stack.push(self.program_counter);
                 self.program_counter = address;
             },
             Instruction::SkipIfValue { register, comparand_value } => {
@@ -347,11 +357,6 @@ impl Emulator {
                 let value = self.registers[register as usize] as u16;
                 let value_to_add = self.registers[add_register as usize] as u16;
                 let result = value + value_to_add;
-                dbg!(value);
-                dbg!(value_to_add);
-                dbg!(result);
-                dbg!(result & 0x0FF);
-                dbg!((result > 0xFF) as u8);
                 self.registers[register as usize] = (result & 0x00FF) as u8;
                 self.registers[0xF] =(result > 0xFF) as u8;
             },
@@ -359,11 +364,6 @@ impl Emulator {
                 let value = self.registers[register as usize] as u16;
                 let value_to_subtract = self.registers[subtract_register as usize] as u16;
                 let result = 0x0100 + value - value_to_subtract;
-                dbg!(value);
-                dbg!(value_to_subtract);
-                dbg!(result);
-                dbg!(result & 0x0FF);
-                dbg!((value_to_subtract > value) as u8);
                 self.registers[register as usize] = (result & 0x00FF) as u8;
                 self.registers[0xF] = (value_to_subtract > value) as u8;
             },
@@ -375,19 +375,27 @@ impl Emulator {
                 self.registers[0xF] =(value_to_subtract > value) as u8;
             },
             Instruction::ShiftRight { register, source_register } => {
-                // TODO: Settings
+                let source_register = if self.settings.use_in_place_shift {
+                    register
+                } else {
+                    source_register
+                };
                 let value = self.registers[source_register as usize];
                 self.registers[register as usize] = value >> 1;
                 self.registers[0xF] = value & 0x01;
             },
             Instruction::ShiftLeft { register, source_register } => {
-                // TODO: Settings
+                let source_register = if self.settings.use_in_place_shift {
+                    register
+                } else {
+                    source_register
+                };
                 let value = self.registers[source_register as usize];
                 self.registers[register as usize] = value << 1;
                 self.registers[0xF] = value & 0x80;
             },
             Instruction::LoadAddress { address } => {
-                dbg!(address);
+                //dbg!(address);
                 self.address_register = address;
             },
             Instruction::Random { register, mask } => {
@@ -409,6 +417,7 @@ impl Emulator {
             Instruction::WaitForKeyDown { register } => {
                 match input.key_pressed {
                     None => {
+                        self.program_counter -= 2;
                         return CycleResult::Wait;
                     },
                     Some(key) => {
@@ -436,13 +445,13 @@ impl Emulator {
                 self.memory[self.address_register as usize + 2] = value % 10
             },
             Instruction::WriteMemory { end_register } => {
-                for i in 0..end_register {
+                for i in 0..end_register+1 {
                     self.memory[self.address_register as usize + i as usize] = self.registers[i as usize];
                 }
                 self.address_register += end_register as u16 + 1;
             },
             Instruction::ReadMemory { end_register } => {
-                for i in 0..end_register {
+                for i in 0..end_register+1 {
                     self.registers[i as usize] = self.memory[self.address_register as usize + i as usize];
                 }
                 self.address_register += end_register as u16 + 1;
@@ -456,18 +465,15 @@ impl Emulator {
                 let x = self.registers[register_x as usize];
                 let y = self.registers[register_y as usize];
                 let sprite = self.memory[self.address_register as usize .. self.address_register as usize + length as usize].to_vec();
-                let has_unset = self.display.apply_sprite(x, y, sprite);
-                self.registers[0xF] = has_unset as u8;
+                let pixels_hidden = self.display.apply_sprite(x, y, sprite);
+                self.registers[0xF] = pixels_hidden as u8;
             },
-            Instruction::SysCall { address } => {
-                //println!("Skipping syscall at address: {}", address);
-            },
+            Instruction::SysCall { .. } => { },
             Instruction::Unknown { instruction } => {
                 println!("Unknown instruction: {}", instruction);
             }
         }
 
-        self.program_counter += 2;
         return CycleResult::Continue;
     }
 
@@ -557,4 +563,40 @@ fn test_subtract_from_with_borrow() {
     let _ = emulator.cycle(&input);
     assert_eq!(emulator.registers[0x0], 0xFF);
     assert_eq!(emulator.registers[0xF], 0x01);
+}
+
+#[test]
+fn test_binary_coded_decimal() {
+    let program = vec![ 0xF0, 0x33 ];
+    let settings = EmulatorSettings::default();
+    let mut emulator = Emulator::new(settings, program);
+    emulator.registers[0x0] = 123;
+    emulator.address_register = 0x400;
+    let input = EmulatorInput { quit: false, key_pressed: None };
+    let _ = emulator.cycle(&input);
+    assert_eq!(emulator.memory[0x400], 1);
+    assert_eq!(emulator.memory[0x401], 2);
+    assert_eq!(emulator.memory[0x402], 3);
+}
+
+#[test]
+fn test_skip_if_value_skipped() {
+    let program = vec![ 0x30, 0x11 ];
+    let settings = EmulatorSettings::default();
+    let mut emulator = Emulator::new(settings, program);
+    emulator.registers[0x0] = 0x11;
+    let input = EmulatorInput { quit: false, key_pressed: None };
+    let _ = emulator.cycle(&input);
+    assert_eq!(emulator.program_counter, settings.program_start_address + 4);
+}
+
+#[test]
+fn test_skip_if_value_not_skipped() {
+    let program = vec![ 0x30, 0x11 ];
+    let settings = EmulatorSettings::default();
+    let mut emulator = Emulator::new(settings, program);
+    emulator.registers[0x0] = 0x10;
+    let input = EmulatorInput { quit: false, key_pressed: None };
+    let _ = emulator.cycle(&input);
+    assert_eq!(emulator.program_counter, settings.program_start_address + 2);
 }

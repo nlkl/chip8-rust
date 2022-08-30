@@ -1,59 +1,68 @@
-pub const HEIGHT: u8 = 32;
-pub const WIDTH: u8 = 64;
-
 pub struct Display {
-    grid: [[bool; HEIGHT as usize]; WIDTH as usize]
+    pub width: u8,
+    pub height: u8,
+    framebuffer: Vec<bool>
 }
 
 impl Display {
-    pub fn new() -> Display {
+    pub fn new(width: u8, height: u8) -> Display {
         Display {
-            grid: [[false; HEIGHT as usize]; WIDTH as usize]
+            width: width,
+            height: height,
+            framebuffer: vec![false; width as usize * height as usize]
         }
     }
 
-    pub fn clear_screen(&mut self) {
-        for x in 0..WIDTH {
-            for y in 0..HEIGHT {
-                self.set(x, y, false);
+    pub fn clear(&mut self) {
+        for x in 0..self.width {
+            for y in 0..self.height {
+                self.set_visibility(x, y, false);
             }
         }
     }
 
-    pub fn apply_sprite(&mut self, x: u8, y: u8, sprite: Vec<u8>) -> bool {
-        let mut has_unset = false;
-        for (i, row) in sprite.iter().enumerate() {
-            let y_row = y + (i as u8);
-            for n in 0..8 {
-                let was_set = self.get(x+n, y_row);
-                let is_set = (row & (0x80 >> n) > 0) ^ was_set;
-                self.set(x+n, y_row, is_set);
-                if !is_set && was_set {
-                    has_unset = true;
+    pub fn apply_sprite(&mut self, x_start: u8, y_start: u8, sprite: Vec<u8>) -> bool {
+        let x_start = x_start % self.width;
+        let y_start = y_start % self.height;
+        let mut pixels_hidden = false;
+        for (dy, mask) in sprite.iter().enumerate() {
+            let y = y_start + (dy as u8);
+            for dx in 0..8 {
+                let x = x_start + dx;
+                let was_displayed = self.is_visible(x, y);
+                let is_displayed = (mask & (0x80 >> dx) > 0) ^ was_displayed;
+                self.set_visibility(x, y, is_displayed);
+                if !is_displayed && was_displayed {
+                    pixels_hidden = true;
+                    println!("HIDDEN {}, {}", x, y);
                 }
             }
         }
-        has_unset
+        pixels_hidden
     }
     
-    pub fn displayed_pixels(&self) -> Vec<(u8, u8)> {
-        let mut active_coords = vec![];
-        for x in 0..WIDTH {
-            for y in 0..HEIGHT {
-                let is_active = self.get(x, y);
-                if is_active {
-                    active_coords.push((x, y));
+    pub fn visible_pixels(&self) -> Vec<(u8, u8)> {
+        let mut visible_pixels = vec![];
+        for x in 0..self.width {
+            for y in 0..self.height {
+                if self.is_visible(x, y) {
+                    visible_pixels.push((x, y));
                 }
             }
         }
-        active_coords
+        visible_pixels
     }
 
-    fn get(&self, x: u8, y: u8) -> bool {
-        self.grid[(x % WIDTH) as usize][(y % HEIGHT) as usize]
+    fn is_visible(&self, x: u8, y: u8) -> bool {
+        if x < self.width && y < self.height {
+            return self.framebuffer[(x as usize) + (y as usize) * (self.width as usize)];
+        }
+        false
     }
 
-    fn set(&mut self, x: u8, y: u8, active: bool) {
-        self.grid[(x % WIDTH) as usize][(y % HEIGHT) as usize] = active;
+    fn set_visibility(&mut self, x: u8, y: u8, visible: bool) {
+        if x < self.width && y < self.height {
+            self.framebuffer[(x as usize) + (y as usize) * (self.width as usize)] = visible;
+        }
     }
 }
