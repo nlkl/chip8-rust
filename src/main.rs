@@ -99,14 +99,16 @@ fn main() {
     let mut canvas = window.into_canvas().build().unwrap();
     let mut event_pump = sdl_context.event_pump().unwrap();
 
+    let mut prev_frame_input = EmulatorInput::default();
+
     emulator.execute(|output| {
-        let mut keys_pressed = vec![];
+        let mut input = EmulatorInput::default();
 
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit {..} |
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-                    return EmulatorInput { quit: true, keys_pressed: vec![] };
+                    return EmulatorInput::quit();
                 },
                 _ => {}
             }
@@ -134,7 +136,13 @@ fn main() {
             };
 
             if let Some(key) = key_pressed  {
-                keys_pressed.push(key);
+                input.set_key_pressed(key);
+            }
+        }
+
+        for key in prev_frame_input.pressed_keys() {
+            if !input.key_pressed(key) {
+                input.set_key_released(key);
             }
         }
 
@@ -153,7 +161,8 @@ fn main() {
         }
 
         canvas.present();
-        return EmulatorInput { quit: false, keys_pressed: keys_pressed };
+        prev_frame_input = input.clone();
+        return input;
     });
 
     loop {

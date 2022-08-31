@@ -1,8 +1,8 @@
 pub struct Display {
     pub width: u8,
     pub height: u8,
-    framebuffer: Vec<bool>,
     wrap_sprites: bool,
+    framebuffer: Vec<bool>,
 }
 
 impl Display {
@@ -10,8 +10,8 @@ impl Display {
         Display {
             width: width,
             height: height,
-            framebuffer: vec![false; width as usize * height as usize],
             wrap_sprites: wrap_sprites,
+            framebuffer: vec![false; width as usize * height as usize],
         }
     }
 
@@ -24,8 +24,7 @@ impl Display {
     }
 
     pub fn apply_sprite(&mut self, x_start: u8, y_start: u8, sprite: Vec<u8>) -> bool {
-        let x_start = x_start % self.width;
-        let y_start = y_start % self.height;
+        let (x_start, y_start) = self.wrap(x_start, y_start);
         let mut pixels_hidden = false;
         for (dy, mask) in sprite.iter().enumerate() {
             let y = y_start + (dy as u8);
@@ -55,64 +54,30 @@ impl Display {
     }
 
     fn is_visible(&self, x: u8, y: u8) -> bool {
-        let (x, y) = self.normalize_coords(x, y);
+        let (x, y) = if self.wrap_sprites { self.wrap(x, y) } else { (x, y) };
+
         if x < self.width && y < self.height {
-            return self.framebuffer[(x as usize) + (y as usize) * (self.width as usize)];
+            let i = self.index(x, y);
+            return self.framebuffer[i];
         }
+
         false
     }
 
     fn set_visibility(&mut self, x: u8, y: u8, visible: bool) {
-        let (x, y) = self.normalize_coords(x, y);
+        let (x, y) = if self.wrap_sprites { self.wrap(x, y) } else { (x, y) };
+
         if x < self.width && y < self.height {
-            self.framebuffer[(x as usize) + (y as usize) * (self.width as usize)] = visible;
+            let i = self.index(x, y);
+            self.framebuffer[i] = visible;
         }
     }
 
-    fn normalize_coords(&self, x: u8, y: u8) -> (u8, u8) {
-        if self.wrap_sprites {
-            return (x % self.width, y % self.height)
-        }
-        (x, y)
+    fn index(&self, x: u8, y: u8) -> usize {
+        (x as usize) + (y as usize) * (self.width as usize)
     }
-}
-
-struct FrameBuffer {
-    width: u8,
-    height: u8,
-    wrap: bool,
-    memory: Vec<bool>,
-}
-
-impl FrameBuffer {
-    fn new(width: u8, height: u8, wrap: bool) -> FrameBuffer {
-        FrameBuffer {
-            width: width,
-            height: height,
-            wrap: wrap,
-            memory: vec![false; width as usize * height as usize],
-        }
-    }
-
-    fn get(&self, x: u8, y: u8) -> bool {
-        let (x, y) = self.normalize_coords(x, y);
-        if x < self.width && y < self.height {
-            return self.memory[(x as usize) + (y as usize) * (self.width as usize)];
-        }
-        return false;
-    }
-
-    fn set(&mut self, x: u8, y: u8, value: bool) {
-        let (x, y) = self.normalize_coords(x, y);
-        if x < self.width && y < self.height {
-            self.memory[(x as usize) + (y as usize) * (self.width as usize)] = value;
-        }
-    }
-
-    fn normalize_coords(&self, x: u8, y: u8) -> (u8, u8) {
-        if self.wrap {
-            return (x % self.width, y % self.height)
-        }
-        (x, y)
+    
+    fn wrap(&self, x: u8, y: u8) -> (u8, u8) {
+        (x % self.width, y % self.height)
     }
 }

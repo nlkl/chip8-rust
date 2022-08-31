@@ -127,9 +127,60 @@ enum CycleResult {
     Done,
 }
 
+#[derive(Clone, Copy)]
 pub struct EmulatorInput {
     pub quit: bool,
-    pub keys_pressed: Vec<u8>,
+    pressed_keys: [bool; 0xF+1],
+    released_keys: [bool; 0xF+1],
+}
+
+impl Default for EmulatorInput {
+    fn default() -> Self {
+        Self {
+            quit: false,
+            pressed_keys: [false; 0xF+1],
+            released_keys: [false; 0xF+1],
+        }
+    }
+}
+
+impl EmulatorInput {
+    pub fn quit() -> Self {
+        Self { quit: true, ..Default::default() }
+    }
+
+    pub fn set_key_pressed(&mut self, key: u8) {
+        assert!(key <= 0xF, "Key out of range.");
+        self.pressed_keys[key as usize] = true;
+    }
+
+    pub fn set_key_released(&mut self, key: u8) {
+        assert!(key <= 0xF, "Key out of range.");
+        self.released_keys[key as usize] = true;
+    }
+
+    pub fn key_pressed(&self, key: u8) -> bool {
+        self.pressed_keys[key as usize]
+    }
+
+    pub fn pressed_keys(&self) -> Vec<u8> {
+        let mut keys = vec![];
+        for key in 0..0xFu8 {
+            if self.pressed_keys[key as usize] {
+                keys.push(key);
+            }
+        }
+        keys
+    }
+
+    pub fn released_key(&self) -> Option<u8> {
+        for key in 0..0xFu8 {
+            if self.released_keys[key as usize] {
+                return Some(key);
+            }
+        }
+        None
+    }
 }
 
 pub struct EmulatorOutput {
@@ -426,23 +477,24 @@ impl Emulator {
             },
             Instruction::SkipIfKeyDown { register } => {
                 let value = self.registers[register as usize];
-                if input.keys_pressed.contains(&value) {
+                if input.key_pressed(value) {
                     self.program_counter += 2;
                 }
             },
             Instruction::SkipIfKeyUp { register } => {
                 let value = self.registers[register as usize];
-                if !input.keys_pressed.contains(&value) {
+                if !input.key_pressed(value) {
                     self.program_counter += 2;
                 }
             },
             Instruction::WaitForKeyDown { register } => {
-                if input.keys_pressed.is_empty() {
+                if let Some(key) = input.released_key() {
+                    println!("Released");
+                    self.registers[register as usize] = key;
+                } else {
                     self.program_counter -= 2;
                     return CycleResult::Wait;
                 }
-                dbg!(input.keys_pressed[0]);
-                self.registers[register as usize] = input.keys_pressed[0];
             }
             Instruction::LoadDelayTimer { register } => {
                 self.registers[register as usize] = self.delay_register;
@@ -512,8 +564,7 @@ fn test_add() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x11;
     emulator.registers[0x1] = 0x10;
-    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
-    let _ = emulator.cycle(&input);
+    let _ = emulator.cycle(&Default::default());
     assert_eq!(emulator.registers[0x0], 0x11 + 0x10);
     assert_eq!(emulator.registers[0xF], 0x00);
 }
@@ -525,8 +576,7 @@ fn test_add_with_carry() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0xFF;
     emulator.registers[0x1] = 0x01;
-    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
-    let _ = emulator.cycle(&input);
+    let _ = emulator.cycle(&Default::default());
     assert_eq!(emulator.registers[0x0], 0x00);
     assert_eq!(emulator.registers[0xF], 0x01);
 }
@@ -538,8 +588,7 @@ fn test_subtract() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x11;
     emulator.registers[0x1] = 0x10;
-    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
-    let _ = emulator.cycle(&input);
+    let _ = emulator.cycle(&Default::default());
     assert_eq!(emulator.registers[0x0], 0x11 - 0x10);
     assert_eq!(emulator.registers[0xF], 0x01);
 }
@@ -551,8 +600,7 @@ fn test_subtract_with_borrow() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x10;
     emulator.registers[0x1] = 0x11;
-    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
-    let _ = emulator.cycle(&input);
+    let _ = emulator.cycle(&Default::default());
     assert_eq!(emulator.registers[0x0], 0xFF);
     assert_eq!(emulator.registers[0xF], 0x00);
 }
@@ -564,8 +612,7 @@ fn test_subtract_from() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x10;
     emulator.registers[0x1] = 0x11;
-    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
-    let _ = emulator.cycle(&input);
+    let _ = emulator.cycle(&Default::default());
     assert_eq!(emulator.registers[0x0], 0x11 - 0x10);
     assert_eq!(emulator.registers[0xF], 0x01);
 }
@@ -577,8 +624,7 @@ fn test_subtract_from_with_borrow() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x11;
     emulator.registers[0x1] = 0x10;
-    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
-    let _ = emulator.cycle(&input);
+    let _ = emulator.cycle(&Default::default());
     assert_eq!(emulator.registers[0x0], 0xFF);
     assert_eq!(emulator.registers[0xF], 0x00);
 }
@@ -590,8 +636,7 @@ fn test_binary_coded_decimal() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 123;
     emulator.address_register = 0x400;
-    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
-    let _ = emulator.cycle(&input);
+    let _ = emulator.cycle(&Default::default());
     assert_eq!(emulator.memory[0x400], 1);
     assert_eq!(emulator.memory[0x401], 2);
     assert_eq!(emulator.memory[0x402], 3);
@@ -603,8 +648,7 @@ fn test_skip_if_value_skipped() {
     let settings = EmulatorSettings::default();
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x11;
-    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
-    let _ = emulator.cycle(&input);
+    let _ = emulator.cycle(&Default::default());
     assert_eq!(emulator.program_counter, settings.program_start_address + 4);
 }
 
@@ -614,7 +658,6 @@ fn test_skip_if_value_not_skipped() {
     let settings = EmulatorSettings::default();
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x10;
-    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
-    let _ = emulator.cycle(&input);
+    let _ = emulator.cycle(&Default::default());
     assert_eq!(emulator.program_counter, settings.program_start_address + 2);
 }
