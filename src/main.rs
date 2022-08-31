@@ -11,76 +11,11 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use std::env;
 use std::fs;
-use std::time::Duration;
 
 const WINDOW_WIDTH: u32 = 640;
 const WINDOW_HEIGHT: u32 = 320;
 
 fn main() {
-    //let sdl_context = sdl2::init().unwrap();
-    //let video_subsystem = sdl_context.video().unwrap();
-
-    //let window = video_subsystem.window("rust-sdl2 demo", 800, 600)
-    //    .position_centered()
-    //    .build()
-    //    .unwrap();
-
-    //let mut canvas = window.into_canvas().build().unwrap();
-
-    //canvas.set_draw_color(Color::RGB(0, 0, 0));
-    //canvas.clear();
-    //canvas.present();
-    //let mut event_pump = sdl_context.event_pump().unwrap();
-    //let mut pos = (100, 100);
-    //let mut vel = (1, 1);
-    //'running: loop {
-    //    let (vx, vy) = vel;
-    //    let (x, y) = pos;
-    //    pos = (x + vx, y + vy);
-    //    let (x, y) = pos;
-
-    //    canvas.set_draw_color(Color::RGB(0, 0, 0));
-    //    canvas.clear();
-
-    //    canvas.set_draw_color(Color::RGB(255, 255, 255));
-    //    canvas.fill_rect(Rect::new(x      , y     , 20, 20)).expect("Filled");
-    //    canvas.fill_rect(Rect::new(x + 40 , y     , 20, 20)).expect("Filled");
-    //    canvas.fill_rect(Rect::new(x + 80 , y     , 20, 20)).expect("Filled");
-    //    canvas.fill_rect(Rect::new(x + 120, y     , 20, 20)).expect("Filled");
-    //    canvas.fill_rect(Rect::new(x      , y + 40, 20, 20)).expect("Filled");
-    //    canvas.fill_rect(Rect::new(x + 40 , y + 40, 20, 20)).expect("Filled");
-    //    canvas.fill_rect(Rect::new(x + 80 , y + 40, 20, 20)).expect("Filled");
-    //    canvas.fill_rect(Rect::new(x + 120, y + 40, 20, 20)).expect("Filled");
-
-    //    for event in event_pump.poll_iter() {
-    //        match event {
-    //            Event::Quit {..} |
-    //            Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-    //                break 'running
-    //            },
-    //            Event::KeyDown { keycode: Some(Keycode::W), .. } => {
-    //                vel = (0, -1);
-    //            },
-    //            Event::KeyDown { keycode: Some(Keycode::D), .. } => {
-    //                vel = (1, 0);
-    //            },
-    //            Event::KeyDown { keycode: Some(Keycode::A), .. } => {
-    //                vel = (-1, 0);
-    //            },
-    //            Event::KeyDown { keycode: Some(Keycode::X), .. } => {
-    //                vel = (0, 1);
-    //            },
-    //            _ => {}
-    //        }
-    //    }
-    //    // The rest of the game loop goes here...
-
-    //    canvas.present();
-    //    ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
-    //}
-
-    //return;
-
     let mut args = env::args();
     let path = args.nth(1).expect("Please provide a path to a valid program.");
     let program = fs::read(path).expect("Could not load program.");

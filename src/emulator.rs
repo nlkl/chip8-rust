@@ -303,8 +303,6 @@ impl Emulator {
         let frame_duration = Duration::from_secs_f64(1.0 / self.settings.frame_rate as f64);
         let cycles_per_frame = (frame_duration.as_secs_f64() / cycle_duration.as_secs_f64()) as i64;
 
-        println!("Cycles per frame: {}", cycles_per_frame);
-
         loop {
             let frame_clock = Instant::now();
 
@@ -340,21 +338,17 @@ impl Emulator {
             if frame_elapsed_duration < frame_duration {
                 std::thread::sleep(frame_duration - frame_elapsed_duration);
             }
-
-            //println!("FPS: {}", 1.0 / frame_clock.elapsed().as_secs_f64());
         }
     }
 
     fn cycle(&mut self, input: &EmulatorInput) -> CycleResult {
         if self.program_counter as usize > (self.memory.len() - 2)  {
-            println!("DONE");
             return CycleResult::Done;
         }
 
         let instruction_bytes = (self.memory[self.program_counter as usize] as u16) << 8 | (self.memory[self.program_counter as usize + 1] as u16);
         let instruction = Instruction::from(instruction_bytes);
         self.program_counter += 2;
-        //dbg!(instruction);
 
         match instruction {
             Instruction::ClearScreen => {
