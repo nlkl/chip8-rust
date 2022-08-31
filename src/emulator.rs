@@ -1,6 +1,5 @@
 use rand;
 use std::time::{Duration, Instant};
-use crate::display;
 use crate::display::Display;
 
 const MEMORY_LENGTH: usize = 4096;
@@ -130,7 +129,7 @@ enum CycleResult {
 
 pub struct EmulatorInput {
     pub quit: bool,
-    pub key_pressed: Option<u8>,
+    pub keys_pressed: Vec<u8>,
 }
 
 pub struct EmulatorOutput {
@@ -147,23 +146,40 @@ pub struct EmulatorSettings {
     pub clock_speed: u16,
     /// The memory address at which programs start.
     pub program_start_address: u16,
-    /// Shift right (8XY6) and left (8XYE) in-place on register VX rather than from VY.
-    pub use_in_place_shift: bool,
     /// The width of the virtual display in px.
     pub display_width: u8,
     /// The height of the virtual display in px.
     pub display_height: u8,
+    /// Shift right (8XY6) and left (8XYE) in-place on register VX rather than from VY.
+    pub use_in_place_shift: bool,
+    /// Jumping with offset (BNNN) uses a specified register for the offset (VX in BXNN).
+    pub use_flexible_jump_offset: bool,
+    /// TODO: Implement
+    /// The memory read (FX65) and write (FX55) operations auto-increment the address register I.
+    pub use_auto_address_increments: bool,
+    /// TODO: Implement
+    /// The logic operations OR (8XY1), AND (8XY2), and XOR (8XY3), reset the flag register VF to 0.
+    pub use_flag_reset_on_logic_ops: bool,
+    /// Sprites partially outside the display are wrapped instead of clipped.
+    pub use_sprite_wrapping: bool,
+    /// Sprites are only applied at the beginning of next frame.
+    pub use_sprite_draw_delay: bool,
 }
 
 impl Default for EmulatorSettings {
     fn default() -> EmulatorSettings { 
         EmulatorSettings {
             frame_rate: 60,
-            clock_speed: 600,
+            clock_speed: 500,
             program_start_address: 0x200,
-            use_in_place_shift: false,
             display_width: 64,
             display_height: 32,
+            use_in_place_shift: false,
+            use_flexible_jump_offset: false,
+            use_auto_address_increments: true,
+            use_flag_reset_on_logic_ops: false,
+            use_sprite_wrapping: false,
+            use_sprite_draw_delay: false,
         }
     }
 }
@@ -212,7 +228,8 @@ impl Emulator {
 
         let display_width = settings.display_width;
         let display_height = settings.display_height;
-        let display = Display::new(display_width, display_height);
+        let wrap_sprites = settings.use_sprite_wrapping;
+        let display = Display::new(display_width, display_height, wrap_sprites);
 
         Emulator {
             settings: settings,
@@ -300,7 +317,13 @@ impl Emulator {
                 self.program_counter = address;
             },
             Instruction::JumpWithOffset { address } => {
-                let offset = self.registers[0x0];
+                let offset = if self.settings.use_flexible_jump_offset {
+                    let register = (address & 0xF00) >> 8;
+                    self.registers[register as usize]
+                } else {
+                    self.registers[0x0]
+                };
+                println!("Adress: {} Offset: {}", address, offset);
                 self.program_counter = address + offset as u16;
             },
             Instruction::Call { address } => {
@@ -365,14 +388,14 @@ impl Emulator {
                 let value_to_subtract = self.registers[subtract_register as usize] as u16;
                 let result = 0x0100 + value - value_to_subtract;
                 self.registers[register as usize] = (result & 0x00FF) as u8;
-                self.registers[0xF] = (value_to_subtract > value) as u8;
+                self.registers[0xF] = (value_to_subtract <= value) as u8;
             },
             Instruction::SubtractFrom { register, subtract_from_register } => {
                 let value_to_subtract = self.registers[register as usize] as u16;
                 let value = self.registers[subtract_from_register as usize] as u16;
                 let result = 0x0100 + value - value_to_subtract;
                 self.registers[register as usize] = (result & 0x00FF) as u8;
-                self.registers[0xF] =(value_to_subtract > value) as u8;
+                self.registers[0xF] = (value_to_subtract <= value) as u8;
             },
             Instruction::ShiftRight { register, source_register } => {
                 let source_register = if self.settings.use_in_place_shift {
@@ -392,10 +415,9 @@ impl Emulator {
                 };
                 let value = self.registers[source_register as usize];
                 self.registers[register as usize] = value << 1;
-                self.registers[0xF] = value & 0x80;
+                self.registers[0xF] = (value & 0x80) >> 7;
             },
             Instruction::LoadAddress { address } => {
-                //dbg!(address);
                 self.address_register = address;
             },
             Instruction::Random { register, mask } => {
@@ -404,26 +426,23 @@ impl Emulator {
             },
             Instruction::SkipIfKeyDown { register } => {
                 let value = self.registers[register as usize];
-                if input.key_pressed == Some(value) {
+                if input.keys_pressed.contains(&value) {
                     self.program_counter += 2;
                 }
             },
             Instruction::SkipIfKeyUp { register } => {
                 let value = self.registers[register as usize];
-                if input.key_pressed != Some(value) {
+                if !input.keys_pressed.contains(&value) {
                     self.program_counter += 2;
                 }
             },
             Instruction::WaitForKeyDown { register } => {
-                match input.key_pressed {
-                    None => {
-                        self.program_counter -= 2;
-                        return CycleResult::Wait;
-                    },
-                    Some(key) => {
-                        self.registers[register as usize] = key;
-                    }
+                if input.keys_pressed.is_empty() {
+                    self.program_counter -= 2;
+                    return CycleResult::Wait;
                 }
+                dbg!(input.keys_pressed[0]);
+                self.registers[register as usize] = input.keys_pressed[0];
             }
             Instruction::LoadDelayTimer { register } => {
                 self.registers[register as usize] = self.delay_register;
@@ -442,7 +461,7 @@ impl Emulator {
                 let value = self.registers[register as usize];
                 self.memory[self.address_register as usize] = value / 100;
                 self.memory[self.address_register as usize + 1] = (value % 100) / 10;
-                self.memory[self.address_register as usize + 2] = value % 10
+                self.memory[self.address_register as usize + 2] = value % 10;
             },
             Instruction::WriteMemory { end_register } => {
                 for i in 0..end_register+1 {
@@ -458,7 +477,6 @@ impl Emulator {
             },
             Instruction::LoadDigitSpriteAddress { register } => {
                 let digit = self.registers[register as usize];
-                dbg!(digit);
                 self.address_register = ((digit & 0x0F) * 5) as u16;
             },
             Instruction::DrawSprite { register_x, register_y, length } => {
@@ -467,11 +485,11 @@ impl Emulator {
                 let sprite = self.memory[self.address_register as usize .. self.address_register as usize + length as usize].to_vec();
                 let pixels_hidden = self.display.apply_sprite(x, y, sprite);
                 self.registers[0xF] = pixels_hidden as u8;
+                if self.settings.use_sprite_draw_delay {
+                    return CycleResult::Wait;
+                }
             },
-            Instruction::SysCall { .. } => { },
-            Instruction::Unknown { instruction } => {
-                println!("Unknown instruction: {}", instruction);
-            }
+            Instruction::SysCall { .. } | Instruction::Unknown { .. } => { }
         }
 
         return CycleResult::Continue;
@@ -494,7 +512,7 @@ fn test_add() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x11;
     emulator.registers[0x1] = 0x10;
-    let input = EmulatorInput { quit: false, key_pressed: None };
+    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
     let _ = emulator.cycle(&input);
     assert_eq!(emulator.registers[0x0], 0x11 + 0x10);
     assert_eq!(emulator.registers[0xF], 0x00);
@@ -507,7 +525,7 @@ fn test_add_with_carry() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0xFF;
     emulator.registers[0x1] = 0x01;
-    let input = EmulatorInput { quit: false, key_pressed: None };
+    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
     let _ = emulator.cycle(&input);
     assert_eq!(emulator.registers[0x0], 0x00);
     assert_eq!(emulator.registers[0xF], 0x01);
@@ -520,10 +538,10 @@ fn test_subtract() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x11;
     emulator.registers[0x1] = 0x10;
-    let input = EmulatorInput { quit: false, key_pressed: None };
+    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
     let _ = emulator.cycle(&input);
     assert_eq!(emulator.registers[0x0], 0x11 - 0x10);
-    assert_eq!(emulator.registers[0xF], 0x00);
+    assert_eq!(emulator.registers[0xF], 0x01);
 }
 
 #[test]
@@ -533,10 +551,10 @@ fn test_subtract_with_borrow() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x10;
     emulator.registers[0x1] = 0x11;
-    let input = EmulatorInput { quit: false, key_pressed: None };
+    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
     let _ = emulator.cycle(&input);
     assert_eq!(emulator.registers[0x0], 0xFF);
-    assert_eq!(emulator.registers[0xF], 0x01);
+    assert_eq!(emulator.registers[0xF], 0x00);
 }
 
 #[test]
@@ -546,10 +564,10 @@ fn test_subtract_from() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x10;
     emulator.registers[0x1] = 0x11;
-    let input = EmulatorInput { quit: false, key_pressed: None };
+    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
     let _ = emulator.cycle(&input);
     assert_eq!(emulator.registers[0x0], 0x11 - 0x10);
-    assert_eq!(emulator.registers[0xF], 0x00);
+    assert_eq!(emulator.registers[0xF], 0x01);
 }
 
 #[test]
@@ -559,10 +577,10 @@ fn test_subtract_from_with_borrow() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x11;
     emulator.registers[0x1] = 0x10;
-    let input = EmulatorInput { quit: false, key_pressed: None };
+    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
     let _ = emulator.cycle(&input);
     assert_eq!(emulator.registers[0x0], 0xFF);
-    assert_eq!(emulator.registers[0xF], 0x01);
+    assert_eq!(emulator.registers[0xF], 0x00);
 }
 
 #[test]
@@ -572,7 +590,7 @@ fn test_binary_coded_decimal() {
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 123;
     emulator.address_register = 0x400;
-    let input = EmulatorInput { quit: false, key_pressed: None };
+    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
     let _ = emulator.cycle(&input);
     assert_eq!(emulator.memory[0x400], 1);
     assert_eq!(emulator.memory[0x401], 2);
@@ -585,7 +603,7 @@ fn test_skip_if_value_skipped() {
     let settings = EmulatorSettings::default();
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x11;
-    let input = EmulatorInput { quit: false, key_pressed: None };
+    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
     let _ = emulator.cycle(&input);
     assert_eq!(emulator.program_counter, settings.program_start_address + 4);
 }
@@ -596,7 +614,7 @@ fn test_skip_if_value_not_skipped() {
     let settings = EmulatorSettings::default();
     let mut emulator = Emulator::new(settings, program);
     emulator.registers[0x0] = 0x10;
-    let input = EmulatorInput { quit: false, key_pressed: None };
+    let input = EmulatorInput { quit: false, keys_pressed: vec![] };
     let _ = emulator.cycle(&input);
     assert_eq!(emulator.program_counter, settings.program_start_address + 2);
 }

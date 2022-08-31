@@ -100,20 +100,20 @@ fn main() {
     let mut event_pump = sdl_context.event_pump().unwrap();
 
     emulator.execute(|output| {
-        let mut key_pressed = None;
+        let mut keys_pressed = vec![];
 
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit {..} |
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-                    return EmulatorInput { quit: true, key_pressed: None };
+                    return EmulatorInput { quit: true, keys_pressed: vec![] };
                 },
                 _ => {}
             }
         }
 
         for scancode in event_pump.keyboard_state().pressed_scancodes() {
-            key_pressed = match scancode {
+            let key_pressed = match scancode {
                 Scancode::Num1 => Some(0x1),
                 Scancode::Num2 => Some(0x2),
                 Scancode::Num3 => Some(0x3),
@@ -133,8 +133,8 @@ fn main() {
                 _ => None
             };
 
-            if key_pressed.is_some()  {
-                break;
+            if let Some(key) = key_pressed  {
+                keys_pressed.push(key);
             }
         }
 
@@ -153,7 +153,7 @@ fn main() {
         }
 
         canvas.present();
-        return EmulatorInput { quit: false, key_pressed: key_pressed };
+        return EmulatorInput { quit: false, keys_pressed: keys_pressed };
     });
 
     loop {
@@ -166,5 +166,6 @@ fn main() {
                 _ => {}
             }
         }
+        canvas.present();
     }
 }
