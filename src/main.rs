@@ -2,6 +2,7 @@ extern crate sdl2;
 
 mod display;
 mod emulator;
+mod instructions;
 
 use emulator::{Emulator, EmulatorSettings, EmulatorInput};
 use sdl2::event::Event;

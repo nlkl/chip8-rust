@@ -1,125 +1,10 @@
 use rand;
 use std::time::{Duration, Instant};
 use crate::display::Display;
+use crate::instructions::Instruction;
 
 const MEMORY_LENGTH: usize = 4096;
 const REGISTER_COUNT: usize = 16;
-
-#[derive(Debug, Clone, Copy)]
-enum Instruction {
-    /// 0NNN - Execute system subroutine (ignored).
-    SysCall { address: u16 },
-    /// 00E0 - Clear the screen.
-    ClearScreen,
-    /// 00EE - Return from subroutine.
-    Return,
-    /// 1NNN- Jump to address NNN.
-    Jump { address: u16 },
-    /// BNNN - Jump to address NNN + V0.
-    JumpWithOffset { address: u16 },
-    /// 2NNN - Call subroutine at address NNN.
-    Call { address: u16 },
-    /// 5XY0 - Skip next instruction if the value in register VX equals the value in register VY.
-    SkipIfEqual { register: u8, comparand_register: u8 },
-    /// 9XY0 - Skip next instruction if the value in register VX does not equal the value in register VY.
-    SkipIfNotEqual { register: u8, comparand_register: u8 },
-    /// 3XNN - Skip next instruction if the value in register VX equals NN.
-    SkipIfValue { register: u8, comparand_value: u8 },
-    /// 4XNN - Skip next instruction if the value in register VX does not equal NN.
-    SkipIfNotValue { register: u8, comparand_value: u8 },
-    /// 6XNN - Load NN into register VX.
-    LoadValue { register: u8, value: u8 },
-    /// 7XNN - Add NN to register VX.
-    AddValue { register: u8, value: u8 },
-    /// 8XY0 - Load the value in register VY into register VX.
-    Load { register: u8, from_register: u8 },
-    /// 8XY1 - Set register VX to VX OR VY.
-    Or { register: u8, or_register: u8 },
-    /// 8XY2 - Set register VX to VX AND VY.
-    And { register: u8, and_register: u8 },
-    /// 8XY3 - Set register VX to VX XOR VY.
-    Xor { register: u8, xor_register: u8 },
-    /// 8XY4 - Set register VX to VX + VY.
-    Add { register: u8, add_register: u8 },
-    /// 8XY5 - Set register VX to VX - VY.
-    Subtract { register: u8, subtract_register: u8 },
-    /// 8XY7 - Set register VX to VY - VX.
-    SubtractFrom { register: u8, subtract_from_register: u8 },
-    /// 8XY6 - Set register VX to VY >> 1.
-    ShiftRight { register: u8, source_register: u8 },
-    /// 8XYE - Set register VX to VY << 1.
-    ShiftLeft { register: u8, source_register: u8 },
-    /// CXNN - Set register VX to a random number with a mask of NN.
-    Random { register: u8, mask: u8 },
-    /// DXYN - Draw sprite at position (VX, VY). The sprite consists of N bytes starting from the address in I.
-    DrawSprite { register_x: u8, register_y: u8, length: u8 },
-    /// EX9E - Skip next instruction if the key corresponding to the value in register VX is pressed.
-    SkipIfKeyDown { register: u8 },
-    /// EXA1 - Skip next instruction if the key corresponding to the value in register VX is not pressed.
-    SkipIfKeyUp { register: u8 },
-    /// FX0A - Wait for a keypress and store the result in register VX.
-    WaitForKeyDown { register: u8 },
-    /// FX07 - Load the current value of the delay timer into register VX.
-    LoadDelayTimer { register: u8 },
-    /// FX15 - Set the delay timer to the value in register VX.
-    SetDelayTimer { register: u8 },
-    /// FX18 - Set the sound timer to the value in register VX.
-    SetSoundTimer { register: u8 },
-    /// ANNN - Load address NNN into I.
-    LoadAddress { address: u16 },
-    /// FX1E - Add the value in register VX to I.
-    AddToAddress { register: u8 },
-    /// FX29 - Load the address of the sprite corresponding to the value stored in register VX into I.
-    LoadDigitSpriteAddress { register: u8 },
-    /// FX33 - Write the value in register VX as a binary-coded decimal into memory starting at the address in I.
-    WriteMemoryFromBinaryCodedDecimal { register: u8 },
-    /// FX55 - Write the values in registers V0 - VX into memory starting at the address in I.
-    WriteMemory { end_register: u8 },
-    /// FX65 - Read memory starting at the address in I into registers V0 - VX.
-    ReadMemory { end_register: u8 },
-    /// Unknown / unsupported instruction.
-    Unknown { instruction: u16 },
-}
-impl From<u16> for Instruction {
-    fn from(instruction: u16) -> Self {
-        if instruction == 0x00E0 { return Self::ClearScreen; }
-        if instruction == 0x00EE { return Self::Return; }
-        if instruction & 0xF000 == 0x0000 { return Self::SysCall { address: instruction & 0x0FFF }; }
-        if instruction & 0xF000 == 0x1000 { return Self::Jump { address: instruction & 0x0FFF }; }
-        if instruction & 0xF000 == 0x2000 { return Self::Call { address: instruction & 0x0FFF }; }
-        if instruction & 0xF000 == 0x3000 { return Self::SkipIfValue { register: ((instruction & 0x0F00) >> 8) as u8, comparand_value: (instruction & 0x00FF) as u8 }; }
-        if instruction & 0xF000 == 0x4000 { return Self::SkipIfNotValue { register: ((instruction & 0x0F00) >> 8) as u8, comparand_value: (instruction & 0x00FF) as u8 }; }
-        if instruction & 0xF00F == 0x5000 { return Self::SkipIfEqual { register: ((instruction & 0x0F00) >> 8) as u8, comparand_register: ((instruction & 0x00F0) >> 4) as u8 }; }
-        if instruction & 0xF000 == 0x6000 { return Self::LoadValue { register: ((instruction & 0x0F00) >> 8) as u8, value: (instruction & 0x00FF) as u8 }; }
-        if instruction & 0xF000 == 0x7000 { return Self::AddValue { register: ((instruction & 0x0F00) >> 8) as u8, value: (instruction & 0x00FF) as u8 }; }
-        if instruction & 0xF00F == 0x8000 { return Self::Load { register: ((instruction & 0x0F00) >> 8) as u8, from_register: ((instruction & 0x00F0) >> 4) as u8 }; }
-        if instruction & 0xF00F == 0x8001 { return Self::Or { register: ((instruction & 0x0F00) >> 8) as u8, or_register: ((instruction & 0x00F0) >> 4) as u8 }; }
-        if instruction & 0xF00F == 0x8002 { return Self::And { register: ((instruction & 0x0F00) >> 8) as u8, and_register: ((instruction & 0x00F0) >> 4) as u8 }; }
-        if instruction & 0xF00F == 0x8003 { return Self::Xor { register: ((instruction & 0x0F00) >> 8) as u8, xor_register: ((instruction & 0x00F0) >> 4) as u8 }; }
-        if instruction & 0xF00F == 0x8004 { return Self::Add { register: ((instruction & 0x0F00) >> 8) as u8, add_register: ((instruction & 0x00F0) >> 4) as u8 }; }
-        if instruction & 0xF00F == 0x8005 { return Self::Subtract { register: ((instruction & 0x0F00) >> 8) as u8, subtract_register: ((instruction & 0x00F0) >> 4) as u8 }; }
-        if instruction & 0xF00F == 0x8006 { return Self::ShiftRight { register: ((instruction & 0x0F00) >> 8) as u8, source_register: ((instruction & 0x00F0) >> 4) as u8 }; }
-        if instruction & 0xF00F == 0x8007 { return Self::SubtractFrom { register: ((instruction & 0x0F00) >> 8) as u8, subtract_from_register: ((instruction & 0x00F0) >> 4) as u8 }; }
-        if instruction & 0xF00F == 0x800E { return Self::ShiftLeft { register: ((instruction & 0x0F00) >> 8) as u8, source_register: ((instruction & 0x00F0) >> 4) as u8 }; }
-        if instruction & 0xF00F == 0x9000 { return Self::SkipIfNotEqual { register: ((instruction & 0x0F00) >> 8) as u8, comparand_register: ((instruction & 0x00F0) >> 4) as u8 }; }
-        if instruction & 0xF000 == 0xA000 { return Self::LoadAddress { address: instruction & 0x0FFF }; }
-        if instruction & 0xF000 == 0xB000 { return Self::JumpWithOffset { address: instruction & 0x0FFF }; }
-        if instruction & 0xF000 == 0xC000 { return Self::Random { register: ((instruction & 0x0F00) >> 8) as u8, mask: (instruction & 0x00FF) as u8 }; }
-        if instruction & 0xF000 == 0xD000 { return Self::DrawSprite { register_x: ((instruction & 0x0F00) >> 8) as u8, register_y: ((instruction & 0x00F0) >> 4) as u8, length: (instruction & 0x000F) as u8 }; }
-        if instruction & 0xF0FF == 0xE09E { return Self::SkipIfKeyDown { register: ((instruction & 0x0F00) >> 8) as u8 }; }
-        if instruction & 0xF0FF == 0xE0A1 { return Self::SkipIfKeyUp { register: ((instruction & 0x0F00) >> 8) as u8 }; }
-        if instruction & 0xF0FF == 0xF007 { return Self::LoadDelayTimer { register: ((instruction & 0x0F00) >> 8) as u8 }; }
-        if instruction & 0xF0FF == 0xF00A { return Self::WaitForKeyDown { register: ((instruction & 0x0F00) >> 8) as u8 }; }
-        if instruction & 0xF0FF == 0xF015 { return Self::SetDelayTimer { register: ((instruction & 0x0F00) >> 8) as u8 }; }
-        if instruction & 0xF0FF == 0xF018 { return Self::SetSoundTimer { register: ((instruction & 0x0F00) >> 8) as u8 }; }
-        if instruction & 0xF0FF == 0xF01E { return Self::AddToAddress { register: ((instruction & 0x0F00) >> 8) as u8 }; }
-        if instruction & 0xF0FF == 0xF029 { return Self::LoadDigitSpriteAddress { register: ((instruction & 0x0F00) >> 8) as u8 }; }
-        if instruction & 0xF0FF == 0xF033 { return Self::WriteMemoryFromBinaryCodedDecimal { register: ((instruction & 0x0F00) >> 8) as u8 }; }
-        if instruction & 0xF0FF == 0xF055 { return Self::WriteMemory { end_register: ((instruction & 0x0F00) >> 8) as u8 }; }
-        if instruction & 0xF0FF == 0xF065 { return Self::ReadMemory { end_register: ((instruction & 0x0F00) >> 8) as u8 }; }
-        return Self::Unknown { instruction };
-    }
-}
 
 enum CycleResult {
     Continue,
@@ -347,7 +232,7 @@ impl Emulator {
         }
 
         let instruction_bytes = (self.memory[self.program_counter as usize] as u16) << 8 | (self.memory[self.program_counter as usize + 1] as u16);
-        let instruction = Instruction::from(instruction_bytes);
+        let instruction = Instruction::decode(instruction_bytes);
         self.program_counter += 2;
 
         match instruction {
@@ -551,107 +436,112 @@ impl Emulator {
     }
 }
 
-#[test]
-fn test_add() {
-    let program = vec![ 0x80, 0x14 ];
-    let settings = EmulatorSettings::default();
-    let mut emulator = Emulator::new(settings, program);
-    emulator.registers[0x0] = 0x11;
-    emulator.registers[0x1] = 0x10;
-    let _ = emulator.cycle(&Default::default());
-    assert_eq!(emulator.registers[0x0], 0x11 + 0x10);
-    assert_eq!(emulator.registers[0xF], 0x00);
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[test]
-fn test_add_with_carry() {
-    let program = vec![ 0x80, 0x14 ];
-    let settings = EmulatorSettings::default();
-    let mut emulator = Emulator::new(settings, program);
-    emulator.registers[0x0] = 0xFF;
-    emulator.registers[0x1] = 0x01;
-    let _ = emulator.cycle(&Default::default());
-    assert_eq!(emulator.registers[0x0], 0x00);
-    assert_eq!(emulator.registers[0xF], 0x01);
-}
+    #[test]
+    fn test_add() {
+        let program = vec![ 0x80, 0x14 ];
+        let settings = EmulatorSettings::default();
+        let mut emulator = Emulator::new(settings, program);
+        emulator.registers[0x0] = 0x11;
+        emulator.registers[0x1] = 0x10;
+        let _ = emulator.cycle(&Default::default());
+        assert_eq!(emulator.registers[0x0], 0x11 + 0x10);
+        assert_eq!(emulator.registers[0xF], 0x00);
+    }
 
-#[test]
-fn test_subtract() {
-    let program = vec![ 0x80, 0x15 ];
-    let settings = EmulatorSettings::default();
-    let mut emulator = Emulator::new(settings, program);
-    emulator.registers[0x0] = 0x11;
-    emulator.registers[0x1] = 0x10;
-    let _ = emulator.cycle(&Default::default());
-    assert_eq!(emulator.registers[0x0], 0x11 - 0x10);
-    assert_eq!(emulator.registers[0xF], 0x01);
-}
+    #[test]
+    fn test_add_with_carry() {
+        let program = vec![ 0x80, 0x14 ];
+        let settings = EmulatorSettings::default();
+        let mut emulator = Emulator::new(settings, program);
+        emulator.registers[0x0] = 0xFF;
+        emulator.registers[0x1] = 0x01;
+        let _ = emulator.cycle(&Default::default());
+        assert_eq!(emulator.registers[0x0], 0x00);
+        assert_eq!(emulator.registers[0xF], 0x01);
+    }
 
-#[test]
-fn test_subtract_with_borrow() {
-    let program = vec![ 0x80, 0x15 ];
-    let settings = EmulatorSettings::default();
-    let mut emulator = Emulator::new(settings, program);
-    emulator.registers[0x0] = 0x10;
-    emulator.registers[0x1] = 0x11;
-    let _ = emulator.cycle(&Default::default());
-    assert_eq!(emulator.registers[0x0], 0xFF);
-    assert_eq!(emulator.registers[0xF], 0x00);
-}
+    #[test]
+    fn test_subtract() {
+        let program = vec![ 0x80, 0x15 ];
+        let settings = EmulatorSettings::default();
+        let mut emulator = Emulator::new(settings, program);
+        emulator.registers[0x0] = 0x11;
+        emulator.registers[0x1] = 0x10;
+        let _ = emulator.cycle(&Default::default());
+        assert_eq!(emulator.registers[0x0], 0x11 - 0x10);
+        assert_eq!(emulator.registers[0xF], 0x01);
+    }
 
-#[test]
-fn test_subtract_from() {
-    let program = vec![ 0x80, 0x17 ];
-    let settings = EmulatorSettings::default();
-    let mut emulator = Emulator::new(settings, program);
-    emulator.registers[0x0] = 0x10;
-    emulator.registers[0x1] = 0x11;
-    let _ = emulator.cycle(&Default::default());
-    assert_eq!(emulator.registers[0x0], 0x11 - 0x10);
-    assert_eq!(emulator.registers[0xF], 0x01);
-}
+    #[test]
+    fn test_subtract_with_borrow() {
+        let program = vec![ 0x80, 0x15 ];
+        let settings = EmulatorSettings::default();
+        let mut emulator = Emulator::new(settings, program);
+        emulator.registers[0x0] = 0x10;
+        emulator.registers[0x1] = 0x11;
+        let _ = emulator.cycle(&Default::default());
+        assert_eq!(emulator.registers[0x0], 0xFF);
+        assert_eq!(emulator.registers[0xF], 0x00);
+    }
 
-#[test]
-fn test_subtract_from_with_borrow() {
-    let program = vec![ 0x80, 0x17 ];
-    let settings = EmulatorSettings::default();
-    let mut emulator = Emulator::new(settings, program);
-    emulator.registers[0x0] = 0x11;
-    emulator.registers[0x1] = 0x10;
-    let _ = emulator.cycle(&Default::default());
-    assert_eq!(emulator.registers[0x0], 0xFF);
-    assert_eq!(emulator.registers[0xF], 0x00);
-}
+    #[test]
+    fn test_subtract_from() {
+        let program = vec![ 0x80, 0x17 ];
+        let settings = EmulatorSettings::default();
+        let mut emulator = Emulator::new(settings, program);
+        emulator.registers[0x0] = 0x10;
+        emulator.registers[0x1] = 0x11;
+        let _ = emulator.cycle(&Default::default());
+        assert_eq!(emulator.registers[0x0], 0x11 - 0x10);
+        assert_eq!(emulator.registers[0xF], 0x01);
+    }
 
-#[test]
-fn test_binary_coded_decimal() {
-    let program = vec![ 0xF0, 0x33 ];
-    let settings = EmulatorSettings::default();
-    let mut emulator = Emulator::new(settings, program);
-    emulator.registers[0x0] = 123;
-    emulator.address_register = 0x400;
-    let _ = emulator.cycle(&Default::default());
-    assert_eq!(emulator.memory[0x400], 1);
-    assert_eq!(emulator.memory[0x401], 2);
-    assert_eq!(emulator.memory[0x402], 3);
-}
+    #[test]
+    fn test_subtract_from_with_borrow() {
+        let program = vec![ 0x80, 0x17 ];
+        let settings = EmulatorSettings::default();
+        let mut emulator = Emulator::new(settings, program);
+        emulator.registers[0x0] = 0x11;
+        emulator.registers[0x1] = 0x10;
+        let _ = emulator.cycle(&Default::default());
+        assert_eq!(emulator.registers[0x0], 0xFF);
+        assert_eq!(emulator.registers[0xF], 0x00);
+    }
 
-#[test]
-fn test_skip_if_value_skipped() {
-    let program = vec![ 0x30, 0x11 ];
-    let settings = EmulatorSettings::default();
-    let mut emulator = Emulator::new(settings, program);
-    emulator.registers[0x0] = 0x11;
-    let _ = emulator.cycle(&Default::default());
-    assert_eq!(emulator.program_counter, settings.program_start_address + 4);
-}
+    #[test]
+    fn test_binary_coded_decimal() {
+        let program = vec![ 0xF0, 0x33 ];
+        let settings = EmulatorSettings::default();
+        let mut emulator = Emulator::new(settings, program);
+        emulator.registers[0x0] = 123;
+        emulator.address_register = 0x400;
+        let _ = emulator.cycle(&Default::default());
+        assert_eq!(emulator.memory[0x400], 1);
+        assert_eq!(emulator.memory[0x401], 2);
+        assert_eq!(emulator.memory[0x402], 3);
+    }
 
-#[test]
-fn test_skip_if_value_not_skipped() {
-    let program = vec![ 0x30, 0x11 ];
-    let settings = EmulatorSettings::default();
-    let mut emulator = Emulator::new(settings, program);
-    emulator.registers[0x0] = 0x10;
-    let _ = emulator.cycle(&Default::default());
-    assert_eq!(emulator.program_counter, settings.program_start_address + 2);
+    #[test]
+    fn test_skip_if_value_skipped() {
+        let program = vec![ 0x30, 0x11 ];
+        let settings = EmulatorSettings::default();
+        let mut emulator = Emulator::new(settings, program);
+        emulator.registers[0x0] = 0x11;
+        let _ = emulator.cycle(&Default::default());
+        assert_eq!(emulator.program_counter, settings.program_start_address + 4);
+    }
+
+    #[test]
+    fn test_skip_if_value_not_skipped() {
+        let program = vec![ 0x30, 0x11 ];
+        let settings = EmulatorSettings::default();
+        let mut emulator = Emulator::new(settings, program);
+        emulator.registers[0x0] = 0x10;
+        let _ = emulator.cycle(&Default::default());
+        assert_eq!(emulator.program_counter, settings.program_start_address + 2);
+    }
 }
