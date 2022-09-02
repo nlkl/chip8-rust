@@ -3,6 +3,7 @@ extern crate sdl2;
 mod display;
 mod emulator;
 mod instructions;
+mod memory;
 
 use emulator::{Emulator, EmulatorSettings, EmulatorInput};
 use sdl2::event::Event;
@@ -24,16 +25,16 @@ fn main() {
     let emulator_settings = EmulatorSettings::default();
     let mut emulator = Emulator::new(emulator_settings, program);
 
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
+    let sdl_context = sdl2::init().expect("Could not initialize SDL2.");
+    let video_subsystem = sdl_context.video().expect("Could not initialize video subsystem.");
     let window = video_subsystem
         .window("Chip-8", WINDOW_WIDTH, WINDOW_HEIGHT)
         .position_centered()
         .resizable()
         .build()
-        .unwrap();
-    let mut canvas = window.into_canvas().build().unwrap();
-    let mut event_pump = sdl_context.event_pump().unwrap();
+        .expect("Could not build window.");
+    let mut canvas = window.into_canvas().build().expect("Could not build canvas.");
+    let mut event_pump = sdl_context.event_pump().expect("Could not obtain event pump.");
 
     let mut prev_frame_input = EmulatorInput::default();
 

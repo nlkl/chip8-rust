@@ -2,9 +2,7 @@ use rand;
 use std::time::{Duration, Instant};
 use crate::display::Display;
 use crate::instructions::Instruction;
-
-const MEMORY_LENGTH: usize = 4096;
-const REGISTER_COUNT: usize = 16;
+use crate::memory::{Memory, Registers};
 
 enum CycleResult {
     Continue,
@@ -82,6 +80,8 @@ pub struct EmulatorSettings {
     pub clock_speed: u16,
     /// The memory address at which programs start.
     pub program_start_address: u16,
+    /// The memory size in bytes.
+    pub memory_size: u16,
     /// The width of the virtual display in px.
     pub display_width: u8,
     /// The height of the virtual display in px.
@@ -108,6 +108,7 @@ impl Default for EmulatorSettings {
             frame_rate: 60,
             clock_speed: 500,
             program_start_address: 0x200,
+            memory_size: 0x1000,
             display_width: 64,
             display_height: 32,
             use_in_place_shift: false,
@@ -123,8 +124,8 @@ impl Default for EmulatorSettings {
 pub struct Emulator {
     settings: EmulatorSettings,
     display: Display,
-    memory: [u8; MEMORY_LENGTH],
-    registers: [u8; REGISTER_COUNT],
+    memory: Memory,
+    registers: Registers,
     program_counter: u16,
     address_register: u16,
     delay_register: u8,
@@ -135,9 +136,12 @@ pub struct Emulator {
 impl Emulator {
     pub fn new(settings: EmulatorSettings, program: Vec<u8>) -> Emulator {
         let program_counter = settings.program_start_address;
-        let mut memory = [0; MEMORY_LENGTH];
+        let memory_size = settings.memory_size;
+        assert!(program.len() <= memory_size as usize - program_counter as usize, "Program size exceeds available memory.");
+
+        let mut memory = Memory::new(memory_size);
         for i in 0..program.len() {
-            memory[i + program_counter as usize] = program[i];
+            memory[i as u16 + program_counter] = program[i];
         }
 
         let sprites = vec![
@@ -159,7 +163,7 @@ impl Emulator {
             0xF0, 0x80, 0xF0, 0x80, 0x80, // F
         ];
         for i in 0..sprites.len() {
-            memory[i] = sprites[i];
+            memory[i as u16] = sprites[i];
         }
 
         let display_width = settings.display_width;
@@ -171,7 +175,7 @@ impl Emulator {
             settings: settings,
             display: display,
             memory: memory,
-            registers: [0; REGISTER_COUNT],
+            registers: Registers::new(),
             program_counter: program_counter,
             address_register: 0,
             delay_register: 0,
@@ -227,11 +231,11 @@ impl Emulator {
     }
 
     fn cycle(&mut self, input: &EmulatorInput) -> CycleResult {
-        if self.program_counter as usize > (self.memory.len() - 2)  {
+        if self.program_counter > (self.memory.size() - 2)  {
             return CycleResult::Done;
         }
 
-        let instruction_bytes = (self.memory[self.program_counter as usize] as u16) << 8 | (self.memory[self.program_counter as usize + 1] as u16);
+        let instruction_bytes = (self.memory[self.program_counter] as u16) << 8 | (self.memory[self.program_counter + 1] as u16);
         let instruction = Instruction::decode(instruction_bytes);
         self.program_counter += 2;
 
@@ -240,7 +244,7 @@ impl Emulator {
                 self.display.clear();
             },
             Instruction::Return => {
-                let return_address = self.stack.pop().expect("Tried to return, but stack was empty.");
+                let return_address = self.stack.pop().expect("No return address found (empty stack).");
                 self.program_counter = return_address;
             },
             Instruction::Jump { address } => {
@@ -249,11 +253,10 @@ impl Emulator {
             Instruction::JumpWithOffset { address } => {
                 let offset = if self.settings.use_flexible_jump_offset {
                     let register = (address & 0xF00) >> 8;
-                    self.registers[register as usize]
+                    self.registers[register as u8]
                 } else {
                     self.registers[0x0]
                 };
-                println!("Adress: {} Offset: {}", address, offset);
                 self.program_counter = address + offset as u16;
             },
             Instruction::Call { address } => {
@@ -261,70 +264,70 @@ impl Emulator {
                 self.program_counter = address;
             },
             Instruction::SkipIfValue { register, comparand_value } => {
-                let value = self.registers[register as usize];
+                let value = self.registers[register];
                 if value == comparand_value {
                     self.program_counter += 2;
                 }
             },
             Instruction::SkipIfNotValue { register, comparand_value } => {
-                let value = self.registers[register as usize];
+                let value = self.registers[register];
                 if value != comparand_value {
                     self.program_counter += 2;
                 }
             },
             Instruction::SkipIfEqual { register, comparand_register } => {
-                let value = self.registers[register as usize];
-                let comparand_value = self.registers[comparand_register as usize];
+                let value = self.registers[register];
+                let comparand_value = self.registers[comparand_register];
                 if value == comparand_value {
                     self.program_counter += 2;
                 }
             },
             Instruction::SkipIfNotEqual { register, comparand_register } => {
-                let value = self.registers[register as usize];
-                let comparand_value = self.registers[comparand_register as usize];
+                let value = self.registers[register];
+                let comparand_value = self.registers[comparand_register];
                 if value != comparand_value {
                     self.program_counter += 2;
                 }
             },
             Instruction::LoadValue { register, value } => {
-                self.registers[register as usize] = value;
+                self.registers[register] = value;
             },
             Instruction::AddValue { register, value } => {
-                let current_value = self.registers[register as usize] as u16;
+                let current_value = self.registers[register] as u16;
                 let result = current_value + value as u16;
-                self.registers[register as usize] = (result & 0x00FF) as u8;
+                self.registers[register] = (result & 0x00FF) as u8;
             },
             Instruction::Load { register, from_register } => {
-                self.registers[register as usize] = self.registers[from_register as usize];
+                self.registers[register] = self.registers[from_register];
             },
             Instruction::Or { register, or_register } => {
-                self.registers[register as usize] |= self.registers[or_register as usize];
+                self.registers[register] |= self.registers[or_register];
             },
             Instruction::And { register, and_register } => {
-                self.registers[register as usize] &= self.registers[and_register as usize];
+                self.registers[register] &= self.registers[and_register];
             },
             Instruction::Xor { register, xor_register } => {
-                self.registers[register as usize] ^= self.registers[xor_register as usize];
+                self.registers[register] ^= self.registers[xor_register];
             },
             Instruction::Add { register, add_register } => {
-                let value = self.registers[register as usize] as u16;
-                let value_to_add = self.registers[add_register as usize] as u16;
+                let value = self.registers[register] as u16;
+                let value_to_add = self.registers[add_register] as u16;
                 let result = value + value_to_add;
-                self.registers[register as usize] = (result & 0x00FF) as u8;
+                self.registers[register] = (result & 0x00FF) as u8;
                 self.registers[0xF] =(result > 0xFF) as u8;
             },
             Instruction::Subtract { register, subtract_register } => {
-                let value = self.registers[register as usize] as u16;
-                let value_to_subtract = self.registers[subtract_register as usize] as u16;
+                let value = self.registers[register] as u16;
+                let value_to_subtract = self.registers[subtract_register] as u16;
                 let result = 0x0100 + value - value_to_subtract;
-                self.registers[register as usize] = (result & 0x00FF) as u8;
+                self.registers[register] = (result & 0x00FF) as u8;
                 self.registers[0xF] = (value_to_subtract <= value) as u8;
             },
             Instruction::SubtractFrom { register, subtract_from_register } => {
-                let value_to_subtract = self.registers[register as usize] as u16;
-                let value = self.registers[subtract_from_register as usize] as u16;
+                let value_to_subtract = self.registers[register] as u16;
+                let value = self.registers[subtract_from_register] as u16;
                 let result = 0x0100 + value - value_to_subtract;
-                self.registers[register as usize] = (result & 0x00FF) as u8;
+                self.registers[register] = (result & 0x00FF) as u8;
                 self.registers[0xF] = (value_to_subtract <= value) as u8;
             },
             Instruction::ShiftRight { register, source_register } => {
@@ -333,8 +336,8 @@ impl Emulator {
                 } else {
                     source_register
                 };
-                let value = self.registers[source_register as usize];
-                self.registers[register as usize] = value >> 1;
+                let value = self.registers[source_register];
+                self.registers[register] = value >> 1;
                 self.registers[0xF] = value & 0x01;
             },
             Instruction::ShiftLeft { register, source_register } => {
@@ -343,8 +346,8 @@ impl Emulator {
                 } else {
                     source_register
                 };
-                let value = self.registers[source_register as usize];
-                self.registers[register as usize] = value << 1;
+                let value = self.registers[source_register];
+                self.registers[register] = value << 1;
                 self.registers[0xF] = (value & 0x80) >> 7;
             },
             Instruction::LoadAddress { address } => {
@@ -352,68 +355,67 @@ impl Emulator {
             },
             Instruction::Random { register, mask } => {
                 let random_value: u8 = rand::random();
-                self.registers[register as usize] = random_value & mask;
+                self.registers[register] = random_value & mask;
             },
             Instruction::SkipIfKeyDown { register } => {
-                let value = self.registers[register as usize];
+                let value = self.registers[register];
                 if input.key_pressed(value) {
                     self.program_counter += 2;
                 }
             },
             Instruction::SkipIfKeyUp { register } => {
-                let value = self.registers[register as usize];
+                let value = self.registers[register];
                 if !input.key_pressed(value) {
                     self.program_counter += 2;
                 }
             },
             Instruction::WaitForKeyDown { register } => {
                 if let Some(key) = input.released_key() {
-                    println!("Released");
-                    self.registers[register as usize] = key;
+                    self.registers[register] = key;
                 } else {
                     self.program_counter -= 2;
                     return CycleResult::Wait;
                 }
             }
             Instruction::LoadDelayTimer { register } => {
-                self.registers[register as usize] = self.delay_register;
+                self.registers[register] = self.delay_register;
             },
             Instruction::SetDelayTimer { register } => {
-                self.delay_register = self.registers[register as usize];
+                self.delay_register = self.registers[register];
             },
             Instruction::SetSoundTimer { register } => {
-                self.sound_register = self.registers[register as usize];
+                self.sound_register = self.registers[register];
             },
             Instruction::AddToAddress { register } => {
-                let value_to_add = self.registers[register as usize];
+                let value_to_add = self.registers[register];
                 self.address_register += value_to_add as u16;
             },
             Instruction::WriteMemoryFromBinaryCodedDecimal { register } => {
-                let value = self.registers[register as usize];
-                self.memory[self.address_register as usize] = value / 100;
-                self.memory[self.address_register as usize + 1] = (value % 100) / 10;
-                self.memory[self.address_register as usize + 2] = value % 10;
+                let value = self.registers[register];
+                self.memory[self.address_register] = value / 100;
+                self.memory[self.address_register + 1] = (value % 100) / 10;
+                self.memory[self.address_register + 2] = value % 10;
             },
             Instruction::WriteMemory { end_register } => {
                 for i in 0..end_register+1 {
-                    self.memory[self.address_register as usize + i as usize] = self.registers[i as usize];
+                    self.memory[self.address_register + i as u16] = self.registers[i];
                 }
                 self.address_register += end_register as u16 + 1;
             },
             Instruction::ReadMemory { end_register } => {
                 for i in 0..end_register+1 {
-                    self.registers[i as usize] = self.memory[self.address_register as usize + i as usize];
+                    self.registers[i] = self.memory[self.address_register + i as u16];
                 }
                 self.address_register += end_register as u16 + 1;
             },
             Instruction::LoadDigitSpriteAddress { register } => {
-                let digit = self.registers[register as usize];
+                let digit = self.registers[register];
                 self.address_register = ((digit & 0x0F) * 5) as u16;
             },
             Instruction::DrawSprite { register_x, register_y, length } => {
-                let x = self.registers[register_x as usize];
-                let y = self.registers[register_y as usize];
-                let sprite = self.memory[self.address_register as usize .. self.address_register as usize + length as usize].to_vec();
+                let x = self.registers[register_x];
+                let y = self.registers[register_y];
+                let sprite = self.memory[self.address_register .. self.address_register + length as u16].to_vec();
                 let pixels_hidden = self.display.apply_sprite(x, y, sprite);
                 self.registers[0xF] = pixels_hidden as u8;
                 if self.settings.use_sprite_draw_delay {
