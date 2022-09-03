@@ -18,10 +18,8 @@ pub struct Settings {
     pub use_in_place_shift: bool,
     /// Jumping with offset (BNNN) uses a specified register for the offset (VX in BXNN).
     pub use_flexible_jump_offset: bool,
-    /// TODO: Implement
     /// The memory read (FX65) and write (FX55) operations auto-increment the address register I.
     pub use_auto_address_increments: bool,
-    /// TODO: Implement
     /// The logic operations OR (8XY1), AND (8XY2), and XOR (8XY3), reset the flag register VF to 0.
     pub use_flag_reset_on_logic_ops: bool,
     /// Sprites partially outside the display are wrapped instead of clipped.

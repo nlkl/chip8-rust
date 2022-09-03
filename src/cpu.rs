@@ -92,14 +92,23 @@ impl Cpu {
             Instruction::Or { register, or_register } => {
                 let value = state.register(register) | state.register(or_register);
                 state.set_register(register, value);
+                if self.settings.use_flag_reset_on_logic_ops {
+                    state.set_register(0xF, 0);
+                }
             },
             Instruction::And { register, and_register } => {
                 let value = state.register(register) & state.register(and_register);
                 state.set_register(register, value);
+                if self.settings.use_flag_reset_on_logic_ops {
+                    state.set_register(0xF, 0);
+                }
             },
             Instruction::Xor { register, xor_register } => {
                 let value = state.register(register) ^ state.register(xor_register);
                 state.set_register(register, value);
+                if self.settings.use_flag_reset_on_logic_ops {
+                    state.set_register(0xF, 0);
+                }
             },
             Instruction::Add { register, add_register } => {
                 let value = state.register(register) as u16;
@@ -192,13 +201,17 @@ impl Cpu {
                 let address = state.address_register();
                 let data = state.read_registers(end_register).to_vec();
                 state.write_memory(address, &data);
-                state.set_address_register(address + end_register as u16 + 1);
+                if self.settings.use_auto_address_increments {
+                    state.set_address_register(address + end_register as u16 + 1);
+                }
             },
             Instruction::ReadMemory { end_register } => {
                 let address = state.address_register();
                 let data = state.read_memory(address, end_register as u16 + 1).to_vec();
                 state.write_registers(&data);
-                state.set_address_register(address + end_register as u16 + 1);
+                if self.settings.use_auto_address_increments {
+                    state.set_address_register(address + end_register as u16 + 1);
+                }
             },
             Instruction::LoadDigitSpriteAddress { register } => {
                 let digit = state.register(register) as u16;
