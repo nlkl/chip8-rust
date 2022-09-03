@@ -26,8 +26,8 @@ pub struct State {
     memory: Vec<u8>,
     registers: [u8; REGISTER_COUNT],
     stack: Vec<u16>,
-    program_counter: u16,
     address_register: u16,
+    pub program_counter: u16,
     pub delay_register: u8,
     pub sound_register: u8,
     pub display: Display,
@@ -40,8 +40,8 @@ impl State {
             memory: vec![0x0; settings.memory_size as usize],
             registers: [0x0; REGISTER_COUNT],
             stack: vec![],
-            program_counter: settings.program_start_address,
             address_register: 0,
+            program_counter: settings.program_start_address,
             delay_register: 0,
             sound_register: 0,
             display: Display::new(settings.display_width, settings.display_height, settings.use_sprite_wrapping),
@@ -85,21 +85,16 @@ impl State {
         self.registers[register as usize] = value;
     }
 
-    pub fn program_counter(&self) -> u16 {
-        self.program_counter
-    }
-
-    pub fn set_program_counter(&mut self, address: u16) {
-        assert!((address as usize) < self.memory.len(), "Address out of bounds. Address: {}.", address);
-        self.program_counter = address;
+    pub fn program_terminated(&self) -> bool {
+        (self.program_counter as usize) >= self.memory.len()
     }
 
     pub fn increment_program_counter(&mut self) {
-        self.set_program_counter(self.program_counter + 2);
+        self.program_counter += 2;
     }
 
     pub fn decrement_program_counter(&mut self) {
-        self.set_program_counter(self.program_counter - 2);
+        self.program_counter -= 2;
     }
 
     pub fn address_register(&self) -> u16 {

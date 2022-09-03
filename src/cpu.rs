@@ -20,13 +20,13 @@ impl Cpu {
     }
 
     pub fn cycle(&self, state: &mut State) -> CpuCycleResult {
-        if state.program_counter() > (self.settings.memory_size - 2)  {
+        if state.program_terminated() {
             return CpuCycleResult::Done;
         }
 
-        let instruction_bytes = state.read_memory(state.program_counter(), 2);
+        let instruction_bytes = state.read_memory(state.program_counter, 2);
         let instruction = Instruction::decode((instruction_bytes[0] as u16) << 8 | instruction_bytes[1] as u16);
-        state.increment_program_counter(); // TODO: Will fail at end
+        state.increment_program_counter();
 
         match instruction {
             Instruction::ClearScreen => {
@@ -34,10 +34,10 @@ impl Cpu {
             },
             Instruction::Return => {
                 let return_address = state.pop_return_address();
-                state.set_program_counter(return_address);
+                state.program_counter = return_address;
             },
             Instruction::Jump { address } => {
-                state.set_program_counter(address);
+                state.program_counter = address;
             },
             Instruction::JumpWithOffset { address } => {
                 let offset = if self.settings.use_flexible_jump_offset {
@@ -46,11 +46,11 @@ impl Cpu {
                 } else {
                     state.register(0x0)
                 };
-                state.set_program_counter(address + offset as u16);
+                state.program_counter = address + offset as u16;
             },
             Instruction::Call { address } => {
-                state.push_return_address(state.program_counter());
-                state.set_program_counter(address);
+                state.push_return_address(state.program_counter);
+                state.program_counter = address;
             },
             Instruction::SkipIfValue { register, comparand_value } => {
                 let value = state.register(register);
@@ -333,7 +333,7 @@ mod tests {
         let (cpu, mut state, settings) = setup(program);
         state.set_register(0x0, 0x11);
         let _ = cpu.cycle(&mut state);
-        assert_eq!(state.program_counter(), settings.program_start_address + 4);
+        assert_eq!(state.program_counter, settings.program_start_address + 4);
     }
 
     #[test]
@@ -342,6 +342,6 @@ mod tests {
         let (cpu, mut state, settings) = setup(program);
         state.set_register(0x0, 0x10);
         let _ = cpu.cycle(&mut state);
-        assert_eq!(state.program_counter(), settings.program_start_address + 2);
+        assert_eq!(state.program_counter, settings.program_start_address + 2);
     }
 }
