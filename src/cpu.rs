@@ -9,10 +9,16 @@ pub enum CpuCycleResult {
 }
 
 pub struct Cpu {
-    pub settings: Settings,
+    settings: Settings,
 }
 
 impl Cpu {
+    pub fn new(settings: Settings) -> Self {
+        Self {
+            settings: settings,
+        }
+    }
+
     pub fn cycle(&self, state: &mut State) -> CpuCycleResult {
         if state.program_counter() > (self.settings.memory_size - 2)  {
             return CpuCycleResult::Done;
@@ -212,5 +218,117 @@ impl Cpu {
         }
 
         return CpuCycleResult::Continue;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup(instructions: Vec<Instruction>) -> (Cpu, State, Settings) {
+        let mut program = vec![];
+        for instruction in instructions {
+            let instruction_bytes = instruction.encode();
+            program.push(((instruction_bytes & 0xFF00) >> 8) as u8);
+            program.push((instruction_bytes & 0x00FF) as u8);
+        }
+        let settings = Settings::default();
+        let cpu = Cpu::new(settings);
+        let state = State::new(settings, program);
+        (cpu, state, settings)
+    }
+
+    #[test]
+    fn test_add() {
+        let program = vec![ Instruction::Add { register: 0x0, add_register: 0x1 } ];
+        let (cpu, mut state, _) = setup(program);
+        state.set_register(0x0, 0x11);
+        state.set_register(0x1, 0x10);
+        let _ = cpu.cycle(&mut state);
+        assert_eq!(state.register(0x0), 0x11 + 0x10);
+        assert_eq!(state.register(0xF), 0x00);
+    }
+
+    #[test]
+    fn test_add_with_carry() {
+        let program = vec![ Instruction::Add { register: 0x0, add_register: 0x1 } ];
+        let (cpu, mut state, _) = setup(program);
+        state.set_register(0x0, 0xFF);
+        state.set_register(0x1, 0x01);
+        let _ = cpu.cycle(&mut state);
+        assert_eq!(state.register(0x0), 0x00);
+        assert_eq!(state.register(0xF), 0x01);
+    }
+
+    #[test]
+    fn test_subtract() {
+        let program = vec![ Instruction::Subtract { register: 0x0, subtract_register: 0x1 } ];
+        let (cpu, mut state, _) = setup(program);
+        state.set_register(0x0, 0x11);
+        state.set_register(0x1, 0x10);
+        let _ = cpu.cycle(&mut state);
+        assert_eq!(state.register(0x0), 0x11 - 0x10);
+        assert_eq!(state.register(0xF), 0x01);
+    }
+
+    #[test]
+    fn test_subtract_with_borrow() {
+        let program = vec![ Instruction::Subtract { register: 0x0, subtract_register: 0x1 } ];
+        let (cpu, mut state, _) = setup(program);
+        state.set_register(0x0, 0x10);
+        state.set_register(0x1, 0x11);
+        let _ = cpu.cycle(&mut state);
+        assert_eq!(state.register(0x0), 0xFF);
+        assert_eq!(state.register(0xF), 0x00);
+    }
+
+    #[test]
+    fn test_subtract_from() {
+        let program = vec![ Instruction::SubtractFrom { register: 0x0, subtract_from_register: 0x1 } ];
+        let (cpu, mut state, _) = setup(program);
+        state.set_register(0x0, 0x10);
+        state.set_register(0x1, 0x11);
+        let _ = cpu.cycle(&mut state);
+        assert_eq!(state.register(0x0), 0x11 - 0x10);
+        assert_eq!(state.register(0xF), 0x01);
+    }
+
+    #[test]
+    fn test_subtract_from_with_borrow() {
+        let program = vec![ Instruction::SubtractFrom { register: 0x0, subtract_from_register: 0x1 } ];
+        let (cpu, mut state, _) = setup(program);
+        state.set_register(0x0, 0x11);
+        state.set_register(0x1, 0x10);
+        let _ = cpu.cycle(&mut state);
+        assert_eq!(state.register(0x0), 0xFF);
+        assert_eq!(state.register(0xF), 0x00);
+    }
+
+    #[test]
+    fn test_binary_coded_decimal() {
+        let program = vec![ Instruction::WriteMemoryFromBinaryCodedDecimal { register: 0x0 } ];
+        let (cpu, mut state, _) = setup(program);
+        state.set_register(0x0, 123);
+        state.set_address_register(0x0400);
+        let _ = cpu.cycle(&mut state);
+        assert_eq!(state.read_memory(0x0400, 3), &[1, 2, 3]);
+    }
+
+    #[test]
+    fn test_skip_if_value_skipped() {
+        let program = vec![ Instruction::SkipIfValue { register: 0x0, comparand_value: 0x11 } ];
+        let (cpu, mut state, settings) = setup(program);
+        state.set_register(0x0, 0x11);
+        let _ = cpu.cycle(&mut state);
+        assert_eq!(state.program_counter(), settings.program_start_address + 4);
+    }
+
+    #[test]
+    fn test_skip_if_value_not_skipped() {
+        let program = vec![ Instruction::SkipIfValue { register: 0x0, comparand_value: 0x11 } ];
+        let (cpu, mut state, settings) = setup(program);
+        state.set_register(0x0, 0x10);
+        let _ = cpu.cycle(&mut state);
+        assert_eq!(state.program_counter(), settings.program_start_address + 2);
     }
 }

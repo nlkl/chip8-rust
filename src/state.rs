@@ -1,7 +1,26 @@
 use crate::display::Display;
 use crate::keypad::Keypad;
+use crate::settings::Settings;
 
 const REGISTER_COUNT: usize = 16;
+const SPRITE_DATA: [u8; 80] = [
+    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+    0x20, 0x60, 0x20, 0x20, 0x70, // 1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+    0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+];
 
 pub struct State {
     memory: Vec<u8>,
@@ -16,18 +35,23 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(memory_size: u16, display: Display, keypad: Keypad) -> Self {
-        Self {
-            memory: vec![0x0; memory_size as usize],
+    pub fn new(settings: Settings, program: Vec<u8>) -> Self {
+        let mut state = Self {
+            memory: vec![0x0; settings.memory_size as usize],
             registers: [0x0; REGISTER_COUNT],
             stack: vec![],
-            program_counter: 0,
+            program_counter: settings.program_start_address,
             address_register: 0,
             delay_register: 0,
             sound_register: 0,
-            display: display,
-            keypad: keypad,
-        }
+            display: Display::new(settings.display_width, settings.display_height, settings.use_sprite_wrapping),
+            keypad: Keypad::new(),
+        };
+
+        state.write_memory(settings.program_start_address, &program);
+        state.write_memory(settings.sprite_start_address, &SPRITE_DATA);
+
+        state
     }
 
     pub fn read_memory(&self, address: u16, size: u16) -> &[u8] {
