@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub struct Display {
     pub width: u8,
     pub height: u8,
@@ -23,7 +24,7 @@ impl Display {
         }
     }
 
-    pub fn apply_sprite(&mut self, x_start: u8, y_start: u8, sprite: Vec<u8>) -> bool {
+    pub fn apply_sprite(&mut self, x_start: u8, y_start: u8, sprite: &[u8]) -> bool {
         let (x_start, y_start) = self.wrap(x_start, y_start);
         let mut pixels_hidden = false;
         for (dy, mask) in sprite.iter().enumerate() {

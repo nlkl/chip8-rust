@@ -5,7 +5,6 @@ mod display;
 mod emulator;
 mod instructions;
 mod keypad;
-mod memory;
 mod settings;
 mod state;
 
@@ -44,8 +43,6 @@ fn main() {
     let mut input = EmulatorInput::new();
 
     emulator.execute(|output| {
-        input.keypad.release_all_keys();
-
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit {..} |
@@ -56,6 +53,7 @@ fn main() {
             }
         }
 
+        input.keypad.release_all_keys();
         for scancode in event_pump.keyboard_state().pressed_scancodes() {
             let key_pressed = match scancode {
                 Scancode::Num1 => Some(0x1),
@@ -83,21 +81,21 @@ fn main() {
         }
 
         let (window_width, window_height) = canvas.output_size().expect("Could not retrieve canvas output size.");
-        let width_scale = window_width / u32::from(output.display_width);
-        let heigh_scale = window_height / u32::from(output.display_height);
+        let width_scale = window_width / u32::from(output.display.width);
+        let heigh_scale = window_height / u32::from(output.display.height);
 
         canvas.set_draw_color(Color::RGB(0, 0, 0));
         canvas.clear();
 
         canvas.set_draw_color(Color::RGB(255, 255, 255));
-        for (x, y) in output.visible_pixels {
+        for (x, y) in output.display.visible_pixels() {
             let x_canvas = (x as u32 * width_scale) as i32;
             let y_canvas = (y as u32 * heigh_scale) as i32;
             canvas.fill_rect(Rect::new(x_canvas, y_canvas, width_scale, heigh_scale)).expect("Draw failed.");
         }
 
         canvas.present();
-        return input;
+        return input.clone();
     });
 
     loop {

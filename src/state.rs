@@ -42,6 +42,15 @@ impl State {
         self.memory[address as usize .. address_range_end].copy_from_slice(data);
     }
 
+    pub fn read_registers(&self, end_register: u8) -> &[u8] {
+        &self.registers[0 .. end_register as usize + 1]
+    }
+
+    pub fn write_registers(&mut self, data: &[u8]) {
+        assert!(data.len() <= REGISTER_COUNT, "Data exceeds register count. Data length: {}.", data.len());
+        self.registers[0 .. data.len()].copy_from_slice(data);
+    }
+
     pub fn register(&self, register: u8) -> u8 {
         assert!(register < REGISTER_COUNT as u8, "Invalid register: {}.", register);
         self.registers[register as usize]
@@ -85,5 +94,17 @@ impl State {
     pub fn push_return_address(&mut self, address: u16) {
         assert!((address as usize) < self.memory.len(), "Address out of bounds. Address: {}.", address);
         self.stack.push(address);
+    }
+
+    pub fn decrement_delay_register(&mut self) {
+        if self.delay_register > 0 {
+            self.delay_register -= 1;
+        }
+    }
+
+    pub fn decrement_sound_register(&mut self) {
+        if self.sound_register > 0 {
+            self.sound_register -= 1;
+        }
     }
 }

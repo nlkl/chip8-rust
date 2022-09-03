@@ -4,6 +4,8 @@ pub struct Settings {
     pub frame_rate: u16,
     /// Frame rate in Hz.
     pub clock_speed: u16,
+    /// The memory address at which sprite data is stored.
+    pub sprite_start_address: u16,
     /// The memory address at which programs start.
     pub program_start_address: u16,
     /// The memory size in bytes.
@@ -33,6 +35,7 @@ impl Default for Settings {
         Self {
             frame_rate: 60,
             clock_speed: 500,
+            sprite_start_address: 0x0,
             program_start_address: 0x200,
             memory_size: 0x1000,
             display_width: 64,
