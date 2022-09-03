@@ -2,7 +2,9 @@ use rand;
 use std::time::{Duration, Instant};
 use crate::display::Display;
 use crate::instructions::Instruction;
+use crate::keypad::Keypad;
 use crate::memory::{Memory, Registers};
+use crate::settings::Settings;
 
 enum CycleResult {
     Continue,
@@ -13,56 +15,19 @@ enum CycleResult {
 #[derive(Clone, Copy)]
 pub struct EmulatorInput {
     pub quit: bool,
-    pressed_keys: [bool; 0xF+1],
-    released_keys: [bool; 0xF+1],
-}
-
-impl Default for EmulatorInput {
-    fn default() -> Self {
-        Self {
-            quit: false,
-            pressed_keys: [false; 0xF+1],
-            released_keys: [false; 0xF+1],
-        }
-    }
+    pub keypad: Keypad,
 }
 
 impl EmulatorInput {
+    pub fn new() -> Self {
+        Self {
+            quit: false,
+            keypad: Keypad::new(),
+        }
+    }
+
     pub fn quit() -> Self {
-        Self { quit: true, ..Default::default() }
-    }
-
-    pub fn set_key_pressed(&mut self, key: u8) {
-        assert!(key <= 0xF, "Key out of range.");
-        self.pressed_keys[key as usize] = true;
-    }
-
-    pub fn set_key_released(&mut self, key: u8) {
-        assert!(key <= 0xF, "Key out of range.");
-        self.released_keys[key as usize] = true;
-    }
-
-    pub fn key_pressed(&self, key: u8) -> bool {
-        self.pressed_keys[key as usize]
-    }
-
-    pub fn pressed_keys(&self) -> Vec<u8> {
-        let mut keys = vec![];
-        for key in 0..0xFu8 {
-            if self.pressed_keys[key as usize] {
-                keys.push(key);
-            }
-        }
-        keys
-    }
-
-    pub fn released_key(&self) -> Option<u8> {
-        for key in 0..0xFu8 {
-            if self.released_keys[key as usize] {
-                return Some(key);
-            }
-        }
-        None
+        Self { quit: true, ..Self::new() }
     }
 }
 
@@ -72,57 +37,8 @@ pub struct EmulatorOutput {
     pub visible_pixels: Vec<(u8, u8)>,
 }
 
-#[derive(Clone, Copy)]
-pub struct EmulatorSettings {
-    /// Clock speed in Hz.
-    pub frame_rate: u16,
-    /// Frame rate in Hz.
-    pub clock_speed: u16,
-    /// The memory address at which programs start.
-    pub program_start_address: u16,
-    /// The memory size in bytes.
-    pub memory_size: u16,
-    /// The width of the virtual display in px.
-    pub display_width: u8,
-    /// The height of the virtual display in px.
-    pub display_height: u8,
-    /// Shift right (8XY6) and left (8XYE) in-place on register VX rather than from VY.
-    pub use_in_place_shift: bool,
-    /// Jumping with offset (BNNN) uses a specified register for the offset (VX in BXNN).
-    pub use_flexible_jump_offset: bool,
-    /// TODO: Implement
-    /// The memory read (FX65) and write (FX55) operations auto-increment the address register I.
-    pub use_auto_address_increments: bool,
-    /// TODO: Implement
-    /// The logic operations OR (8XY1), AND (8XY2), and XOR (8XY3), reset the flag register VF to 0.
-    pub use_flag_reset_on_logic_ops: bool,
-    /// Sprites partially outside the display are wrapped instead of clipped.
-    pub use_sprite_wrapping: bool,
-    /// Sprites are only applied at the beginning of next frame.
-    pub use_sprite_draw_delay: bool,
-}
-
-impl Default for EmulatorSettings {
-    fn default() -> EmulatorSettings { 
-        EmulatorSettings {
-            frame_rate: 60,
-            clock_speed: 500,
-            program_start_address: 0x200,
-            memory_size: 0x1000,
-            display_width: 64,
-            display_height: 32,
-            use_in_place_shift: false,
-            use_flexible_jump_offset: false,
-            use_auto_address_increments: true,
-            use_flag_reset_on_logic_ops: false,
-            use_sprite_wrapping: false,
-            use_sprite_draw_delay: false,
-        }
-    }
-}
-
 pub struct Emulator {
-    settings: EmulatorSettings,
+    settings: Settings,
     display: Display,
     memory: Memory,
     registers: Registers,
@@ -134,7 +50,7 @@ pub struct Emulator {
 }
 
 impl Emulator {
-    pub fn new(settings: EmulatorSettings, program: Vec<u8>) -> Emulator {
+    pub fn new(settings: Settings, program: Vec<u8>) -> Emulator {
         let program_counter = settings.program_start_address;
         let memory_size = settings.memory_size;
         assert!(program.len() <= memory_size as usize - program_counter as usize, "Program size exceeds available memory.");
@@ -359,19 +275,19 @@ impl Emulator {
             },
             Instruction::SkipIfKeyDown { register } => {
                 let value = self.registers[register];
-                if input.key_pressed(value) {
+                if input.keypad.key_pressed(value) {
                     self.program_counter += 2;
                 }
             },
             Instruction::SkipIfKeyUp { register } => {
                 let value = self.registers[register];
-                if !input.key_pressed(value) {
+                if !input.keypad.key_pressed(value) {
                     self.program_counter += 2;
                 }
             },
             Instruction::WaitForKeyDown { register } => {
-                if let Some(key) = input.released_key() {
-                    self.registers[register] = key;
+                if let Some(key) = input.keypad.released_keys().first() {
+                    self.registers[register] = *key;
                 } else {
                     self.program_counter -= 2;
                     return CycleResult::Wait;
@@ -445,11 +361,11 @@ mod tests {
     #[test]
     fn test_add() {
         let program = vec![ 0x80, 0x14 ];
-        let settings = EmulatorSettings::default();
+        let settings = Settings::default();
         let mut emulator = Emulator::new(settings, program);
         emulator.registers[0x0] = 0x11;
         emulator.registers[0x1] = 0x10;
-        let _ = emulator.cycle(&Default::default());
+        let _ = emulator.cycle(&EmulatorInput::new());
         assert_eq!(emulator.registers[0x0], 0x11 + 0x10);
         assert_eq!(emulator.registers[0xF], 0x00);
     }
@@ -457,11 +373,11 @@ mod tests {
     #[test]
     fn test_add_with_carry() {
         let program = vec![ 0x80, 0x14 ];
-        let settings = EmulatorSettings::default();
+        let settings = Settings::default();
         let mut emulator = Emulator::new(settings, program);
         emulator.registers[0x0] = 0xFF;
         emulator.registers[0x1] = 0x01;
-        let _ = emulator.cycle(&Default::default());
+        let _ = emulator.cycle(&EmulatorInput::new());
         assert_eq!(emulator.registers[0x0], 0x00);
         assert_eq!(emulator.registers[0xF], 0x01);
     }
@@ -469,11 +385,11 @@ mod tests {
     #[test]
     fn test_subtract() {
         let program = vec![ 0x80, 0x15 ];
-        let settings = EmulatorSettings::default();
+        let settings = Settings::default();
         let mut emulator = Emulator::new(settings, program);
         emulator.registers[0x0] = 0x11;
         emulator.registers[0x1] = 0x10;
-        let _ = emulator.cycle(&Default::default());
+        let _ = emulator.cycle(&EmulatorInput::new());
         assert_eq!(emulator.registers[0x0], 0x11 - 0x10);
         assert_eq!(emulator.registers[0xF], 0x01);
     }
@@ -481,11 +397,11 @@ mod tests {
     #[test]
     fn test_subtract_with_borrow() {
         let program = vec![ 0x80, 0x15 ];
-        let settings = EmulatorSettings::default();
+        let settings = Settings::default();
         let mut emulator = Emulator::new(settings, program);
         emulator.registers[0x0] = 0x10;
         emulator.registers[0x1] = 0x11;
-        let _ = emulator.cycle(&Default::default());
+        let _ = emulator.cycle(&EmulatorInput::new());
         assert_eq!(emulator.registers[0x0], 0xFF);
         assert_eq!(emulator.registers[0xF], 0x00);
     }
@@ -493,11 +409,11 @@ mod tests {
     #[test]
     fn test_subtract_from() {
         let program = vec![ 0x80, 0x17 ];
-        let settings = EmulatorSettings::default();
+        let settings = Settings::default();
         let mut emulator = Emulator::new(settings, program);
         emulator.registers[0x0] = 0x10;
         emulator.registers[0x1] = 0x11;
-        let _ = emulator.cycle(&Default::default());
+        let _ = emulator.cycle(&EmulatorInput::new());
         assert_eq!(emulator.registers[0x0], 0x11 - 0x10);
         assert_eq!(emulator.registers[0xF], 0x01);
     }
@@ -505,11 +421,11 @@ mod tests {
     #[test]
     fn test_subtract_from_with_borrow() {
         let program = vec![ 0x80, 0x17 ];
-        let settings = EmulatorSettings::default();
+        let settings = Settings::default();
         let mut emulator = Emulator::new(settings, program);
         emulator.registers[0x0] = 0x11;
         emulator.registers[0x1] = 0x10;
-        let _ = emulator.cycle(&Default::default());
+        let _ = emulator.cycle(&EmulatorInput::new());
         assert_eq!(emulator.registers[0x0], 0xFF);
         assert_eq!(emulator.registers[0xF], 0x00);
     }
@@ -517,11 +433,11 @@ mod tests {
     #[test]
     fn test_binary_coded_decimal() {
         let program = vec![ 0xF0, 0x33 ];
-        let settings = EmulatorSettings::default();
+        let settings = Settings::default();
         let mut emulator = Emulator::new(settings, program);
         emulator.registers[0x0] = 123;
         emulator.address_register = 0x400;
-        let _ = emulator.cycle(&Default::default());
+        let _ = emulator.cycle(&EmulatorInput::new());
         assert_eq!(emulator.memory[0x400], 1);
         assert_eq!(emulator.memory[0x401], 2);
         assert_eq!(emulator.memory[0x402], 3);
@@ -530,20 +446,20 @@ mod tests {
     #[test]
     fn test_skip_if_value_skipped() {
         let program = vec![ 0x30, 0x11 ];
-        let settings = EmulatorSettings::default();
+        let settings = Settings::default();
         let mut emulator = Emulator::new(settings, program);
         emulator.registers[0x0] = 0x11;
-        let _ = emulator.cycle(&Default::default());
+        let _ = emulator.cycle(&EmulatorInput::new());
         assert_eq!(emulator.program_counter, settings.program_start_address + 4);
     }
 
     #[test]
     fn test_skip_if_value_not_skipped() {
         let program = vec![ 0x30, 0x11 ];
-        let settings = EmulatorSettings::default();
+        let settings = Settings::default();
         let mut emulator = Emulator::new(settings, program);
         emulator.registers[0x0] = 0x10;
-        let _ = emulator.cycle(&Default::default());
+        let _ = emulator.cycle(&EmulatorInput::new());
         assert_eq!(emulator.program_counter, settings.program_start_address + 2);
     }
 }

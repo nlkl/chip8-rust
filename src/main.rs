@@ -1,11 +1,16 @@
 extern crate sdl2;
 
+mod cpu;
 mod display;
 mod emulator;
 mod instructions;
+mod keypad;
 mod memory;
+mod settings;
+mod state;
 
-use emulator::{Emulator, EmulatorSettings, EmulatorInput};
+use emulator::{Emulator, EmulatorInput};
+use settings::Settings;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::keyboard::Scancode;
@@ -22,7 +27,7 @@ fn main() {
     let path = args.nth(1).expect("Please provide a path to a valid program.");
     let program = fs::read(path).expect("Could not load program.");
 
-    let emulator_settings = EmulatorSettings::default();
+    let emulator_settings = Settings::default();
     let mut emulator = Emulator::new(emulator_settings, program);
 
     let sdl_context = sdl2::init().expect("Could not initialize SDL2.");
@@ -36,10 +41,10 @@ fn main() {
     let mut canvas = window.into_canvas().build().expect("Could not build canvas.");
     let mut event_pump = sdl_context.event_pump().expect("Could not obtain event pump.");
 
-    let mut prev_frame_input = EmulatorInput::default();
+    let mut input = EmulatorInput::new();
 
     emulator.execute(|output| {
-        let mut input = EmulatorInput::default();
+        input.keypad.release_all_keys();
 
         for event in event_pump.poll_iter() {
             match event {
@@ -73,13 +78,7 @@ fn main() {
             };
 
             if let Some(key) = key_pressed  {
-                input.set_key_pressed(key);
-            }
-        }
-
-        for key in prev_frame_input.pressed_keys() {
-            if !input.key_pressed(key) {
-                input.set_key_released(key);
+                input.keypad.set_key_pressed(key);
             }
         }
 
@@ -98,7 +97,6 @@ fn main() {
         }
 
         canvas.present();
-        prev_frame_input = input.clone();
         return input;
     });
 
