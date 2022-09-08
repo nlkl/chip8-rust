@@ -126,4 +126,8 @@ impl State {
             self.sound_register -= 1;
         }
     }
+
+    pub fn sound_playing(&self) -> bool {
+        self.sound_register > 0
+    }
 }

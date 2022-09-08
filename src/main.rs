@@ -1,5 +1,6 @@
 extern crate sdl2;
 
+mod speaker;
 mod cpu;
 mod display;
 mod emulator;
@@ -10,6 +11,7 @@ mod state;
 
 use emulator::{Emulator, EmulatorInput};
 use settings::Settings;
+use speaker::{SpeakerSettings, Speaker};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::keyboard::Scancode;
@@ -30,6 +32,11 @@ fn main() {
     let mut emulator = Emulator::new(emulator_settings, program);
 
     let sdl_context = sdl2::init().expect("Could not initialize SDL2.");
+
+    let audio_subsystem = sdl_context.audio().expect("Could not initialize audio subsystem.");
+    let speaker_settings = SpeakerSettings::default();
+    let mut speaker = Speaker::new(audio_subsystem, speaker_settings);
+
     let video_subsystem = sdl_context.video().expect("Could not initialize video subsystem.");
     let window = video_subsystem
         .window("Chip-8", WINDOW_WIDTH, WINDOW_HEIGHT)
@@ -43,6 +50,12 @@ fn main() {
     let mut input = EmulatorInput::new();
 
     emulator.execute(|output| {
+        if output.sound_playing {
+            speaker.play()
+        } else {
+            speaker.pause()
+        }
+
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit {..} |

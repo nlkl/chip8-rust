@@ -26,6 +26,7 @@ impl EmulatorInput {
 
 pub struct EmulatorOutput {
     pub display: Display,
+    pub sound_playing: bool,
 }
 
 pub struct Emulator {
@@ -57,7 +58,10 @@ impl Emulator {
             self.state.decrement_delay_register();
             self.state.decrement_sound_register();
 
-            let output = EmulatorOutput { display: self.state.display.clone() };
+            let output = EmulatorOutput { 
+                display: self.state.display.clone(),
+                sound_playing: self.state.sound_playing(),
+            };
             let input = render(output);
             self.state.keypad = input.keypad;
 
