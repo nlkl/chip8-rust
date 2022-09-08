@@ -13,8 +13,7 @@ use emulator::{Emulator, EmulatorInput};
 use settings::Settings;
 use speaker::{SpeakerSettings, Speaker};
 use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
-use sdl2::keyboard::Scancode;
+use sdl2::keyboard::{Keycode, Scancode};
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use std::env;
@@ -61,6 +60,13 @@ fn main() {
                 Event::Quit {..} |
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                     return EmulatorInput::quit();
+                },
+                Event::KeyDown { keycode: Some(Keycode::M), .. } => {
+                    if speaker.volume() > 0 {
+                        speaker.set_volume(0);
+                    } else {
+                        speaker.set_volume(speaker_settings.volume);
+                    }
                 },
                 _ => {}
             }
