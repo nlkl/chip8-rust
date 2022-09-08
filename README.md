@@ -8,9 +8,6 @@ SDL2 is used for rendering and IO, but the emulator is built in a way that makes
 
 Although it currently requires recompilation, the emulator supports most common CHIP-8 quirks. See `settings.rs` for further details.
 
-Currently unsupported features:
-* Sound
-
 ## Build
 
 To build the emulator, simply run:
