@@ -29,3 +29,28 @@ To execute, specify a path to the ROM you wish to execute:
 ```
 chip8 path/to/rom.ch8
 ```
+
+## Key map
+
+Toogle sound: m
+
+Keypad:
+
+| Keyboard key | Chip-8 key |
+| - | - |
+| 1 | 1 |
+| 2 | 2 |
+| 3 | 3 |
+| 4 | c |
+| q | 4 |
+| w | 5 |
+| e | 6 |
+| r | d |
+| a | 7 |
+| s | 8 |
+| d | 9 |
+| f | e |
+| z | a |
+| x | 0 |
+| c | b |
+| v | f |
