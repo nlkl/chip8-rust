@@ -55,9 +55,6 @@ impl Emulator {
         loop {
             let frame_clock = Instant::now();
 
-            self.state.decrement_delay_register();
-            self.state.decrement_sound_register();
-
             let output = EmulatorOutput { 
                 display: self.state.display.clone(),
                 sound_playing: self.state.sound_playing(),
@@ -68,6 +65,9 @@ impl Emulator {
             if input.quit {
                 break;
             }
+
+            self.state.decrement_delay_register();
+            self.state.decrement_sound_register();
 
             for _ in 0..cycles_per_frame {
                 let cycle_result = self.cpu.cycle(&mut self.state);
