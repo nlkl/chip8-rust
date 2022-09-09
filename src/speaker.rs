@@ -13,7 +13,7 @@ impl Default for SpeakerSettings {
     fn default() -> Self {
         Self {
             frequency: 220,
-            volume: 20,
+            volume: 75,
         }
     }
 }
@@ -25,10 +25,10 @@ struct Beep {
 }
 
 impl AudioCallback for Beep {
-    type Channel = i8;
+    type Channel = f32;
 
-    fn callback(&mut self, out: &mut [i8]) {
-        let amplitude = (self.settings.volume / 2) as i8;
+    fn callback(&mut self, out: &mut [f32]) {
+        let amplitude = self.settings.volume as f32 / u8::MAX as  f32;
         let phase_delta = self.settings.frequency as f32 / self.sample_frequency as f32;
         for i in 0..out.len() {
             out[i] = if self.phase <= 0.5 { amplitude } else { -amplitude };
